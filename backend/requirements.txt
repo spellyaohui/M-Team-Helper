@@ -1,0 +1,11 @@
+fastapi>=0.115.0
+uvicorn>=0.32.0
+sqlalchemy>=2.0.36
+pydantic>=2.10.0
+pydantic-settings>=2.6.0
+httpx>=0.28.0
+apscheduler>=3.10.4
+python-multipart>=0.0.17
+qbittorrent-api>=2024.11.68
+transmission-rpc>=7.0.11
+bencodepy>=0.9.5

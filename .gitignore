@@ -1,0 +1,36 @@
+# 环境变量（包含敏感配置）
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+.venv/
+
+# 数据文件（包含用户数据）
+backend/data/mteam.db
+backend/data/torrents/
+
+# Node.js
+node_modules/
+frontend/node_modules/
+
+# 构建输出
+frontend/dist/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 日志
+*.log
