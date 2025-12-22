@@ -1,6 +1,6 @@
 # M-Team Helper
 
-M-Team PT 站自动化助手，支持自动下载免费种子、管理多账号、集成 qBittorrent/Transmission 下载器。
+M-Team PT 站自动化助手，支持自动下载免费种子、管理多账号、支持连接 qBittorrent/Transmission 下载器。
 
 ## 功能特性
 

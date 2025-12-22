@@ -1,5 +1,6 @@
 # 环境变量（包含敏感配置）
 .env
+.kiro/
 
 # Python
 __pycache__/
