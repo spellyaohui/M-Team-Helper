@@ -1,12 +1,15 @@
 # M-Team Helper
 
+[![GitHub](https://img.shields.io/badge/GitHub-spellyaohui%2FM--Team--Helper-blue?logo=github)](https://github.com/spellyaohui/M-Team-Helper)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
+
 M-Team PT 站自动化助手，支持自动下载免费种子、管理多账号、支持连接 qBittorrent/Transmission 下载器。
 
 ## 功能特性
 
 - 多账号管理：通过 API Token 认证管理多个 M-Team 账号
 - 自动下载规则：根据条件（免费/2x上传、大小、做种数、关键词等）自动下载种子
-- 下载器集成：支持 qBittorrent 和 Transmission
+- 支持的下载器：qBittorrent 和 Transmission
 - 促销过期自动删除：免费促销过期后自动删除未完成的种子，保护分享率
 - 下载队列限制：可设置最大同时下载数，超过则暂停添加
 - 标签管理：下载时自动添加标签，便于分类管理
@@ -23,8 +26,8 @@ M-Team PT 站自动化助手，支持自动下载免费种子、管理多账号�
 ### 1. 克隆项目
 
 ```bash
-git clone <repository-url>
-cd mteam-helper
+git clone https://github.com/spellyaohui/M-Team-Helper.git
+cd M-Team-Helper
 ```
 
 ### 2. 生产部署（推荐）
