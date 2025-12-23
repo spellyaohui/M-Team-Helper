@@ -1,5 +1,4 @@
-import asyncio
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Any
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
@@ -7,7 +6,7 @@ from sqlalchemy.orm import Session
 import json
 
 from database import SessionLocal
-from models import Account, FilterRule, DownloadHistory, Downloader, SystemSettings
+from models import Account, FilterRule, DownloadHistory, Downloader, SystemSettings, beijing_now
 from services.scraper import MTeamAPI, parse_torrent
 from services.downloader import add_torrent, get_torrent_info, delete_torrent, get_downloading_count, get_torrent_info_with_tags
 from routers.rules import match_torrent
@@ -61,7 +60,7 @@ async def refresh_all_accounts():
                         account.download = int(member_count.get("downloaded", 0))
                         account.ratio = float(member_count.get("shareRate", 0))
                         account.bonus = float(member_count.get("bonus", 0))
-                        account.last_login = datetime.utcnow()
+                        account.last_login = beijing_now()
                         print(f"[Scheduler] 刷新账号 {account.username} 成功")
                 except Exception as e:
                     print(f"[Scheduler] 刷新账号 {account.username} 失败: {e}")
@@ -259,7 +258,7 @@ async def check_expired_torrents():
             print(f"[Scheduler] 自动删种功能已禁用")
             return
         
-        now = datetime.utcnow()
+        now = beijing_now()
         
         # 免费促销类型列表
         FREE_DISCOUNT_TYPES = ["FREE", "_2X_FREE"]

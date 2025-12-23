@@ -6,7 +6,7 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
 
 from database import get_db
-from models import Account, DownloadHistory, FilterRule, Downloader
+from models import Account, DownloadHistory, FilterRule, Downloader, beijing_now
 from services.downloader import get_downloading_count, get_incomplete_torrents, get_seeding_count
 
 router = APIRouter(prefix="/dashboard", tags=["仪表盘"])
@@ -74,7 +74,7 @@ async def get_dashboard_data(db: Session = Depends(get_db)):
     total_downloads = db.query(DownloadHistory).count()
     
     # 最近24小时下载数
-    yesterday = datetime.utcnow() - timedelta(days=1)
+    yesterday = beijing_now() - timedelta(days=1)
     recent_downloads = db.query(DownloadHistory).filter(
         DownloadHistory.created_at >= yesterday
     ).count()
@@ -151,7 +151,7 @@ async def get_dashboard_data(db: Session = Depends(get_db)):
     # 下载趋势（最近7天）
     download_trends = {}
     for i in range(7):
-        date = datetime.utcnow() - timedelta(days=i)
+        date = beijing_now() - timedelta(days=i)
         date_str = date.strftime('%Y-%m-%d')
         
         count = db.query(DownloadHistory).filter(

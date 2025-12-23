@@ -1,12 +1,19 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import hashlib
 import secrets
 
 from database import get_db, Base, engine
 from sqlalchemy import Column, Integer, String, DateTime, Boolean
+
+# 北京时间 (UTC+8)
+BEIJING_TZ = timezone(timedelta(hours=8))
+
+def beijing_now():
+    """获取当前北京时间"""
+    return datetime.now(BEIJING_TZ).replace(tzinfo=None)
 
 # 用户模型
 class User(Base):
@@ -17,7 +24,7 @@ class User(Base):
     username = Column(String(50), unique=True, index=True)
     password_hash = Column(String(128))
     is_admin = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=beijing_now)
     last_login = Column(DateTime, nullable=True)
 
 # 创建表
@@ -66,11 +73,11 @@ async def login(req: LoginRequest, db: Session = Depends(get_db)):
     active_tokens[token] = {
         "user_id": user.id,
         "username": user.username,
-        "expires": datetime.utcnow() + timedelta(days=7)
+        "expires": beijing_now() + timedelta(days=7)
     }
     
     # 更新最后登录时间
-    user.last_login = datetime.utcnow()
+    user.last_login = beijing_now()
     db.commit()
     
     return LoginResponse(
@@ -109,7 +116,7 @@ async def register(req: RegisterRequest, db: Session = Depends(get_db)):
     active_tokens[token] = {
         "user_id": user.id,
         "username": user.username,
-        "expires": datetime.utcnow() + timedelta(days=7)
+        "expires": beijing_now() + timedelta(days=7)
     }
     
     return LoginResponse(
@@ -133,7 +140,7 @@ async def verify_token(token: str = ""):
         raise HTTPException(status_code=401, detail="未登录或登录已过期")
     
     token_data = active_tokens[token]
-    if datetime.utcnow() > token_data["expires"]:
+    if beijing_now() > token_data["expires"]:
         del active_tokens[token]
         raise HTTPException(status_code=401, detail="登录已过期")
     

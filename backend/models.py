@@ -1,7 +1,14 @@
 from sqlalchemy import Column, Integer, String, Boolean, Float, DateTime, ForeignKey, Text, JSON
 from sqlalchemy.orm import relationship
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from database import Base
+
+# 北京时间 (UTC+8)
+BEIJING_TZ = timezone(timedelta(hours=8))
+
+def beijing_now():
+    """获取当前北京时间"""
+    return datetime.now(BEIJING_TZ).replace(tzinfo=None)
 
 class Account(Base):
     """PT账号"""
@@ -22,8 +29,8 @@ class Account(Base):
     ratio = Column(Float, default=0)  # 分享率
     bonus = Column(Float, default=0)  # 魔力值
     
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=beijing_now)
+    updated_at = Column(DateTime, default=beijing_now, onupdate=beijing_now)
     
     # 关联
     rules = relationship("FilterRule", back_populates="account")
@@ -58,7 +65,7 @@ class FilterRule(Base):
     tags = Column(JSON, nullable=True)  # 下载时添加的标签列表
     max_downloading = Column(Integer, nullable=True)  # 最大同时下载数，超过则暂停添加
     
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=beijing_now)
     
     account = relationship("Account", back_populates="rules")
     downloader = relationship("Downloader")
@@ -77,7 +84,7 @@ class Downloader(Base):
     use_ssl = Column(Boolean, default=False)  # 是否使用 HTTPS
     is_active = Column(Boolean, default=True)
     
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=beijing_now)
 
 class SystemSettings(Base):
     """系统设置"""
@@ -87,8 +94,8 @@ class SystemSettings(Base):
     key = Column(String(100), unique=True, index=True)  # 设置键名
     value = Column(Text)  # 设置值（JSON 字符串）
     description = Column(String(500), nullable=True)  # 设置描述
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=beijing_now)
+    updated_at = Column(DateTime, default=beijing_now, onupdate=beijing_now)
 
 class DownloadHistory(Base):
     """下载历史"""
@@ -108,7 +115,7 @@ class DownloadHistory(Base):
     discount_type = Column(String(20), nullable=True)  # 促销类型：FREE, _2X_FREE 等
     discount_end_time = Column(DateTime, nullable=True)  # 促销到期时间
     
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=beijing_now)
     
     account = relationship("Account", back_populates="downloads")
     downloader = relationship("Downloader")

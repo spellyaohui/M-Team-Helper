@@ -5,7 +5,7 @@ from typing import Optional, List
 from datetime import datetime
 
 from database import get_db
-from models import Account
+from models import Account, beijing_now
 from services.scraper import MTeamAPI, parse_user_profile
 
 router = APIRouter(prefix="/accounts", tags=["账号管理"])
@@ -65,7 +65,7 @@ async def create_account(account: AccountCreate, db: Session = Depends(get_db)):
         download=profile["downloaded"],
         ratio=profile["ratio"],
         bonus=profile["bonus"],
-        last_login=datetime.utcnow()
+        last_login=beijing_now()
     )
     db.add(db_account)
     db.commit()
@@ -100,7 +100,7 @@ async def refresh_account_info(account_id: int, db: Session = Depends(get_db)):
         account.download = profile["downloaded"]
         account.ratio = profile["ratio"]
         account.bonus = profile["bonus"]
-        account.last_login = datetime.utcnow()
+        account.last_login = beijing_now()
         db.commit()
         return ProfileResponse(success=True, message="刷新成功", data=profile)
     

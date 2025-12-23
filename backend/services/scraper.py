@@ -23,29 +23,52 @@ class MTeamAPI:
         if data is None:
             data = {}
         
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            if use_form:
-                headers = {**self.headers, "Content-Type": "application/x-www-form-urlencoded"}
-                response = await client.post(
-                    f"{self.base_url}/{endpoint}",
-                    headers=headers,
-                    data=data
-                )
-            else:
-                # M-Team API 要求用 data 传 JSON 字符串
-                headers = {**self.headers}
-                headers.pop("Content-Type", None)  # 让 httpx 自动处理
-                response = await client.post(
-                    f"{self.base_url}/{endpoint}",
-                    headers=headers,
-                    content=json.dumps(data)
-                )
-            
-            result = response.json()
-            if result.get("code") == "0":
-                return {"success": True, "data": result.get("data")}
-            else:
-                return {"success": False, "error": result.get("message", "API请求失败")}
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                if use_form:
+                    headers = {**self.headers, "Content-Type": "application/x-www-form-urlencoded"}
+                    response = await client.post(
+                        f"{self.base_url}/{endpoint}",
+                        headers=headers,
+                        data=data
+                    )
+                else:
+                    # M-Team API 要求用 data 传 JSON 字符串
+                    headers = {**self.headers}
+                    headers.pop("Content-Type", None)  # 让 httpx 自动处理
+                    response = await client.post(
+                        f"{self.base_url}/{endpoint}",
+                        headers=headers,
+                        content=json.dumps(data)
+                    )
+                
+                # 检查 HTTP 状态码
+                if response.status_code != 200:
+                    return {"success": False, "error": f"HTTP错误: {response.status_code}"}
+                
+                # 检查响应内容是否为空
+                if not response.content:
+                    return {"success": False, "error": "API返回空响应"}
+                
+                # 尝试解析 JSON
+                try:
+                    result = response.json()
+                except json.JSONDecodeError:
+                    # 返回原始响应内容的前200字符用于调试
+                    content_preview = response.text[:200] if response.text else "(空)"
+                    return {"success": False, "error": f"API返回非JSON响应: {content_preview}"}
+                
+                if result.get("code") == "0":
+                    return {"success": True, "data": result.get("data")}
+                else:
+                    return {"success": False, "error": result.get("message", "API请求失败")}
+                    
+        except httpx.TimeoutException:
+            return {"success": False, "error": "请求超时，请检查网络连接"}
+        except httpx.ConnectError:
+            return {"success": False, "error": "无法连接到M-Team服务器"}
+        except Exception as e:
+            return {"success": False, "error": f"请求异常: {str(e)}"}
     
     async def get_profile(self) -> Dict[str, Any]:
         """获取用户信息"""

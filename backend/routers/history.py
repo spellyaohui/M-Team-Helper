@@ -6,7 +6,7 @@ from datetime import datetime
 import os
 
 from database import get_db
-from models import DownloadHistory, Account, Downloader, FilterRule
+from models import DownloadHistory, Account, Downloader, FilterRule, beijing_now
 from services.scheduler import check_expired_torrents
 from services.downloader import get_torrent_info_with_tags, add_torrent, get_tags, create_tags
 from config import TORRENT_DIR
@@ -74,7 +74,7 @@ async def list_history(
 @router.get("/check-expired")
 async def check_expired_status(db: Session = Depends(get_db)):
     """检查所有种子的过期状态（调试用）"""
-    now = datetime.utcnow()
+    now = beijing_now()
     
     # 获取所有有促销信息的记录
     records = db.query(DownloadHistory).filter(
@@ -238,7 +238,7 @@ async def upload_torrent_file(
             print(f"[Upload] 解析种子文件失败: {e}")
         
         # 保存种子文件
-        torrent_filename = f"upload_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}_{file.filename}"
+        torrent_filename = f"upload_{beijing_now().strftime('%Y%m%d_%H%M%S')}_{file.filename}"
         torrent_path = TORRENT_DIR / torrent_filename
         
         with open(torrent_path, "wb") as f:
@@ -276,7 +276,7 @@ async def upload_torrent_file(
             info_hash=info_hash if info_hash != "unknown" else None,
             discount_type=discount_type,
             discount_end_time=discount_end_time,
-            created_at=datetime.utcnow()
+            created_at=beijing_now()
         )
         
         db.add(history_record)
