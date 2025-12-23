@@ -45,6 +45,12 @@ interface AutoDeleteSettings {
   enabled: boolean;
   delete_scope: 'all' | 'normal' | 'adult';
   check_tags: boolean;
+  // 新增字段
+  downloader_id?: number;
+  enable_dynamic_delete: boolean;
+  max_capacity_gb: number;
+  min_capacity_gb: number;
+  delete_strategy: 'oldest_first' | 'largest_first' | 'lowest_ratio';
 }
 
 interface SchedulerJob {
@@ -381,6 +387,22 @@ const SettingsPage: React.FC = () => {
   const [autoDeleteForm] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [schedulerStatus, setSchedulerStatus] = useState<SchedulerStatus | null>(null);
+  const [downloaders, setDownloaders] = useState<any[]>([]);
+
+  // 获取下载器列表
+  const fetchDownloaders = async () => {
+    try {
+      const response = await fetch('/downloaders/', {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+        },
+      });
+      const data = await response.json();
+      setDownloaders(data);
+    } catch (error) {
+      console.error('获取下载器列表失败:', error);
+    }
+  };
 
   // 获取刷新间隔设置
   const fetchRefreshIntervals = async () => {
@@ -489,6 +511,7 @@ const SettingsPage: React.FC = () => {
     fetchRefreshIntervals();
     fetchAutoDeleteSettings();
     fetchSchedulerStatus();
+    fetchDownloaders();
     
     // 每30秒刷新调度器状态
     const interval = setInterval(fetchSchedulerStatus, 30000);
@@ -856,7 +879,7 @@ const SettingsPage: React.FC = () => {
           description="自动删种功能会在促销过期后自动删除未完成的种子，避免影响分享率。请谨慎配置。"
           type="warning"
           showIcon
-          style={{ marginBottom: 16 }}
+          style={{ marginBottom: 24 }}
         />
         
         <Form
@@ -867,23 +890,42 @@ const SettingsPage: React.FC = () => {
             enabled: true,
             delete_scope: 'all',
             check_tags: true,
+            downloader_id: undefined,
+            enable_dynamic_delete: false,
+            max_capacity_gb: 1000,
+            min_capacity_gb: 800,
+            delete_strategy: 'oldest_first',
           }}
         >
-          <Row gutter={16}>
-            <Col span={8}>
+          {/* 基础设置 */}
+          <Title level={4} style={{ marginBottom: 16 }}>基础设置</Title>
+          <Alert
+            message="基础设置说明"
+            description="以下设置将应用于所有下载器的自动删种功能"
+            type="info"
+            showIcon
+            style={{ marginBottom: 16 }}
+          />
+          
+          <Row gutter={[24, 16]}>
+            <Col xs={24} sm={12} md={8}>
               <Form.Item
                 label="启用自动删种"
                 name="enabled"
                 valuePropName="checked"
               >
-                <Switch />
+                <Switch 
+                  checkedChildren="开启" 
+                  unCheckedChildren="关闭"
+                />
               </Form.Item>
             </Col>
             
-            <Col span={8}>
+            <Col xs={24} sm={12} md={8}>
               <Form.Item
                 label="删种范围"
                 name="delete_scope"
+                tooltip="选择要删除的种子类型范围"
               >
                 <Select>
                   <Option value="all">全部种子</Option>
@@ -893,22 +935,214 @@ const SettingsPage: React.FC = () => {
               </Form.Item>
             </Col>
             
-            <Col span={8}>
+            <Col xs={24} sm={12} md={8}>
               <Form.Item
                 label="检查标签匹配"
                 name="check_tags"
                 valuePropName="checked"
+                tooltip="是否检查种子标签与规则标签的匹配"
               >
-                <Switch />
+                <Switch 
+                  checkedChildren="检查" 
+                  unCheckedChildren="忽略"
+                />
               </Form.Item>
             </Col>
           </Row>
 
-          <Form.Item>
-            <Button type="primary" htmlType="submit" loading={loading}>
+          <Divider style={{ margin: '32px 0 24px 0' }}>
+            <Space>
+              <span style={{ fontSize: '16px', fontWeight: 500 }}>动态删种设置</span>
+              <Tooltip title="根据容量阈值自动删除种子，防止磁盘空间不足">
+                <InfoCircleOutlined style={{ color: '#1890ff' }} />
+              </Tooltip>
+            </Space>
+          </Divider>
+          
+          <Alert
+            message="动态删种说明"
+            description={
+              <div>
+                <p>动态删种功能需要指定具体的下载器，当该下载器中种子总大小超过最大容量阈值时，系统会自动删除种子直到达到最小容量阈值。</p>
+                <p>删除顺序根据选择的删除策略决定，每30分钟检查一次。</p>
+              </div>
+            }
+            type="info"
+            showIcon
+            style={{ marginBottom: 24 }}
+          />
+
+          <Row gutter={[24, 16]}>
+            <Col xs={24} sm={12} md={8}>
+              <Form.Item
+                label="启用动态删种"
+                name="enable_dynamic_delete"
+                valuePropName="checked"
+              >
+                <Switch 
+                  checkedChildren="开启" 
+                  unCheckedChildren="关闭"
+                />
+              </Form.Item>
+            </Col>
+            
+            <Col xs={24} sm={12} md={8}>
+              <Form.Item
+                label={
+                  <Space>
+                    <span>指定下载器</span>
+                    <Text type="danger">*</Text>
+                  </Space>
+                }
+                name="downloader_id"
+                tooltip="动态删种必须指定具体的下载器"
+                rules={[
+                  {
+                    validator: (_, value) => {
+                      const enableDynamic = autoDeleteForm.getFieldValue('enable_dynamic_delete');
+                      if (enableDynamic && !value) {
+                        return Promise.reject(new Error('启用动态删种时必须选择下载器'));
+                      }
+                      return Promise.resolve();
+                    }
+                  }
+                ]}
+              >
+                <Select placeholder="请选择下载器" allowClear>
+                  {downloaders.map(downloader => (
+                    <Option key={downloader.id} value={downloader.id}>
+                      <Space>
+                        <Tag color={downloader.type === 'qbittorrent' ? 'blue' : 'green'}>
+                          {downloader.type === 'qbittorrent' ? 'qB' : 'TR'}
+                        </Tag>
+                        {downloader.name}
+                      </Space>
+                    </Option>
+                  ))}
+                </Select>
+              </Form.Item>
+            </Col>
+            
+            <Col xs={24} sm={12} md={8}>
+              <Form.Item
+                label="删除策略"
+                name="delete_strategy"
+                tooltip="选择删除种子的优先顺序"
+              >
+                <Select>
+                  <Option value="oldest_first">
+                    <Space>
+                      <ClockCircleOutlined />
+                      最旧优先
+                    </Space>
+                  </Option>
+                  <Option value="largest_first">
+                    <Space>
+                      <span>📦</span>
+                      最大优先
+                    </Space>
+                  </Option>
+                  <Option value="lowest_ratio">
+                    <Space>
+                      <span>📊</span>
+                      最低分享率优先
+                    </Space>
+                  </Option>
+                </Select>
+              </Form.Item>
+            </Col>
+          </Row>
+          
+          <Row gutter={[24, 16]} style={{ marginTop: 8 }}>
+            <Col xs={24} sm={12} md={8}>
+              <Form.Item
+                label={
+                  <Space>
+                    <span>最大容量阈值</span>
+                    <Text type="secondary">(GB)</Text>
+                  </Space>
+                }
+                name="max_capacity_gb"
+                tooltip="超过此容量时开始删种"
+              >
+                <InputNumber
+                  min={1}
+                  max={10000}
+                  step={10}
+                  style={{ width: '100%' }}
+                  placeholder="1000"
+                  formatter={value => `${value} GB`}
+                  parser={value => value!.replace(' GB', '')}
+                />
+              </Form.Item>
+            </Col>
+            
+            <Col xs={24} sm={12} md={8}>
+              <Form.Item
+                label={
+                  <Space>
+                    <span>最小容量阈值</span>
+                    <Text type="secondary">(GB)</Text>
+                  </Space>
+                }
+                name="min_capacity_gb"
+                tooltip="删种至此容量后停止"
+              >
+                <InputNumber
+                  min={1}
+                  max={10000}
+                  step={10}
+                  style={{ width: '100%' }}
+                  placeholder="800"
+                  formatter={value => `${value} GB`}
+                  parser={value => value!.replace(' GB', '')}
+                />
+              </Form.Item>
+            </Col>
+            
+            <Col xs={24} sm={12} md={8}>
+              <div style={{ 
+                padding: '16px', 
+                background: '#f6f8fa', 
+                borderRadius: '6px',
+                border: '1px solid #e1e4e8'
+              }}>
+                <Text type="secondary" style={{ fontSize: '12px' }}>删除容量范围</Text>
+                <div style={{ marginTop: '4px' }}>
+                  <Text strong style={{ color: '#1890ff' }}>
+                    {(autoDeleteForm.getFieldValue('max_capacity_gb') || 1000) - (autoDeleteForm.getFieldValue('min_capacity_gb') || 800)} GB
+                  </Text>
+                </div>
+                <Text type="secondary" style={{ fontSize: '11px' }}>
+                  每次最多删除的容量
+                </Text>
+              </div>
+            </Col>
+          </Row>
+
+          <div style={{ 
+            marginTop: 32, 
+            padding: '16px 0', 
+            borderTop: '1px solid #f0f0f0',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center'
+          }}>
+            <Space>
+              <CheckCircleOutlined style={{ color: '#52c41a' }} />
+              <Text type="secondary">设置将在保存后立即生效</Text>
+            </Space>
+            
+            <Button 
+              type="primary" 
+              htmlType="submit" 
+              loading={loading}
+              size="large"
+              style={{ minWidth: '120px' }}
+            >
               保存设置
             </Button>
-          </Form.Item>
+          </div>
         </Form>
       </Card>
     </div>

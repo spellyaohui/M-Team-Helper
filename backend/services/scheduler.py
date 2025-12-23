@@ -8,7 +8,7 @@ import json
 from database import SessionLocal
 from models import Account, FilterRule, DownloadHistory, Downloader, SystemSettings, beijing_now
 from services.scraper import MTeamAPI, parse_torrent
-from services.downloader import add_torrent, get_torrent_info, delete_torrent, get_downloading_count, get_torrent_info_with_tags
+from services.downloader import add_torrent, get_torrent_info, delete_torrent, get_downloading_count, get_torrent_info_with_tags, get_all_torrents_with_details, get_downloader_total_size, delete_torrents_by_strategy, delete_torrents_by_free_space, get_disk_space_info
 from routers.rules import match_torrent
 from config import settings, TORRENT_DIR
 
@@ -475,6 +475,158 @@ async def check_expired_torrents():
     finally:
         db.close()
 
+
+async def check_dynamic_delete():
+    """检查动态删种：根据容量阈值自动删除种子"""
+    # 记录执行时间
+    last_execution_times["dynamic_delete"] = beijing_now()
+    
+    db = SessionLocal()
+    try:
+        # 获取自动删种设置
+        from models import SystemSettings
+        import json
+        
+        setting = db.query(SystemSettings).filter(
+            SystemSettings.key == "auto_delete_expired"
+        ).first()
+        
+        # 默认设置
+        auto_delete_config = {
+            "enabled": True,
+            "delete_scope": "all",
+            "check_tags": True,
+            "downloader_id": None,
+            "enable_dynamic_delete": False,
+            "max_capacity_gb": 1000.0,
+            "min_capacity_gb": 800.0,
+            "delete_strategy": "oldest_first"
+        }
+        
+        if setting:
+            try:
+                auto_delete_config.update(json.loads(setting.value))
+            except json.JSONDecodeError:
+                print(f"[DynamicDelete] 解析自动删种设置失败，使用默认配置")
+        
+        # 如果禁用了动态删种，直接返回
+        if not auto_delete_config.get("enable_dynamic_delete", False):
+            return
+        
+        # 动态删种必须指定下载器
+        if not auto_delete_config.get("downloader_id"):
+            print(f"[DynamicDelete] 动态删种功能已启用，但未指定下载器，跳过")
+            return
+        
+        print(f"[DynamicDelete] 开始检查动态删种，最大容量: {auto_delete_config['max_capacity_gb']} GB，最小容量: {auto_delete_config['min_capacity_gb']} GB")
+        
+        # 获取指定的下载器
+        downloader = db.query(Downloader).filter(
+            Downloader.id == auto_delete_config["downloader_id"],
+            Downloader.is_active == True
+        ).first()
+        
+        if not downloader:
+            print(f"[DynamicDelete] 指定的下载器不存在或未激活: {auto_delete_config['downloader_id']}")
+            return
+        
+        try:
+            print(f"[DynamicDelete] 检查下载器: {downloader.name}")
+            
+            # 获取磁盘空间信息
+            disk_info = await get_disk_space_info(downloader)
+            if not disk_info or "free_space_gb" not in disk_info:
+                print(f"[DynamicDelete] 无法获取下载器 {downloader.name} 的磁盘空间信息")
+                return
+            
+            free_space_gb = disk_info["free_space_gb"]
+            max_capacity_gb = auto_delete_config["max_capacity_gb"]
+            min_capacity_gb = auto_delete_config["min_capacity_gb"]
+            
+            print(f"[DynamicDelete] 下载器 {downloader.name} 剩余空间: {free_space_gb:.2f} GB")
+            print(f"[DynamicDelete] 容量阈值: 最大 {max_capacity_gb} GB, 最小 {min_capacity_gb} GB")
+            
+            # 检查是否低于最大容量阈值（剩余空间不足）
+            if free_space_gb >= max_capacity_gb:
+                print(f"[DynamicDelete] 下载器 {downloader.name} 剩余空间充足，跳过")
+                return
+            
+            print(f"[DynamicDelete] 下载器 {downloader.name} 剩余空间不足，开始删种")
+            
+            # 计算需要释放的空间
+            need_to_free_gb = min_capacity_gb - free_space_gb
+            print(f"[DynamicDelete] 需要释放空间: {need_to_free_gb:.2f} GB")
+            
+            # 获取所有种子详细信息
+            all_torrents = await get_all_torrents_with_details(downloader)
+            if not all_torrents:
+                print(f"[DynamicDelete] 下载器 {downloader.name} 没有种子")
+                return
+            
+            # 过滤种子（根据删种范围和标签设置）
+            filtered_torrents = []
+            delete_scope = auto_delete_config.get("delete_scope", "all")
+            check_tags = auto_delete_config.get("check_tags", True)
+            
+            for torrent in all_torrents:
+                # 查找对应的下载历史记录
+                history_record = db.query(DownloadHistory).filter(
+                    DownloadHistory.info_hash == torrent["hash"],
+                    DownloadHistory.downloader_id == downloader.id
+                ).first()
+                
+                # 根据删种范围过滤
+                if history_record and history_record.rule_id:
+                    rule = db.query(FilterRule).filter(FilterRule.id == history_record.rule_id).first()
+                    if rule:
+                        if delete_scope == "normal" and rule.mode == "adult":
+                            continue  # 跳过成人种子
+                        elif delete_scope == "adult" and rule.mode == "normal":
+                            continue  # 跳过正常种子
+                        
+                        # 检查标签匹配
+                        if check_tags and rule.tags:
+                            rule_tags = set(rule.tags)
+                            torrent_tags = set(torrent.get("tags", []))
+                            if not rule_tags.intersection(torrent_tags):
+                                continue  # 标签不匹配，跳过
+                
+                filtered_torrents.append(torrent)
+            
+            if not filtered_torrents:
+                print(f"[DynamicDelete] 下载器 {downloader.name} 没有符合删除条件的种子")
+                return
+            
+            # 执行删种
+            delete_strategy = auto_delete_config.get("delete_strategy", "oldest_first")
+            deleted_hashes = await delete_torrents_by_free_space(
+                downloader,
+                filtered_torrents,
+                need_to_free_gb,
+                delete_strategy
+            )
+            
+            # 更新下载历史状态
+            if deleted_hashes:
+                for hash_value in deleted_hashes:
+                    history_record = db.query(DownloadHistory).filter(
+                        DownloadHistory.info_hash == hash_value,
+                        DownloadHistory.downloader_id == downloader.id
+                    ).first()
+                    if history_record:
+                        history_record.status = "dynamic_deleted"
+                
+                db.commit()
+                print(f"[DynamicDelete] 下载器 {downloader.name} 动态删种完成，删除了 {len(deleted_hashes)} 个种子")
+            
+        except Exception as e:
+            print(f"[DynamicDelete] 处理下载器 {downloader.name} 失败: {e}")
+        
+    except Exception as e:
+        print(f"[DynamicDelete] 动态删种任务失败: {e}")
+    finally:
+        db.close()
+
 def start_scheduler():
     """启动定时任务"""
     intervals = get_refresh_intervals()
@@ -500,6 +652,14 @@ def start_scheduler():
         check_expired_torrents,
         IntervalTrigger(seconds=intervals["expired_check_interval"]),
         id="check_expired",
+        replace_existing=True
+    )
+    
+    # 动态删种检查任务（每30分钟执行一次）
+    scheduler.add_job(
+        check_dynamic_delete,
+        IntervalTrigger(seconds=1800),  # 30分钟
+        id="dynamic_delete",
         replace_existing=True
     )
     

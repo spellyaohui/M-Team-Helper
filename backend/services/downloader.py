@@ -478,6 +478,251 @@ async def get_disk_space_info(downloader) -> Optional[Dict[str, Any]]:
         return None
 
 
+async def get_all_torrents_with_details(downloader) -> List[Dict[str, Any]]:
+    """获取下载器中所有种子的详细信息（用于动态删种）
+    
+    Returns:
+        种子列表，每个种子包含：hash, name, size, added_on, ratio, state 等信息
+    """
+    try:
+        if downloader.type == "qbittorrent":
+            client = _get_qb_client(downloader)
+            torrents = client.torrents_info()
+            
+            result = []
+            for t in torrents:
+                result.append({
+                    "hash": t.hash,
+                    "name": t.name,
+                    "size": t.size,
+                    "added_on": t.added_on,  # 添加时间戳
+                    "ratio": t.ratio,
+                    "state": t.state,
+                    "progress": t.progress * 100,
+                    "downloaded": t.downloaded,
+                    "uploaded": t.uploaded,
+                    "tags": t.tags.split(',') if t.tags else []
+                })
+            return result
+        
+        elif downloader.type == "transmission":
+            client = _get_tr_client(downloader)
+            torrents = client.get_torrents()
+            
+            result = []
+            for t in torrents:
+                result.append({
+                    "hash": t.hashString,
+                    "name": t.name,
+                    "size": t.total_size,
+                    "added_on": t.date_added.timestamp() if t.date_added else 0,
+                    "ratio": t.ratio,
+                    "state": t.status,
+                    "progress": t.progress,
+                    "downloaded": t.downloaded_ever,
+                    "uploaded": t.uploaded_ever,
+                    "tags": []  # Transmission 不支持标签
+                })
+            return result
+        
+        return []
+    
+    except Exception as e:
+        print(f"[Downloader] 获取种子详细信息失败: {e}")
+        return []
+
+
+async def get_downloader_total_size(downloader) -> float:
+    """获取下载器中所有种子的总大小（GB）
+    
+    Returns:
+        总大小（GB）
+    """
+    try:
+        torrents = await get_all_torrents_with_details(downloader)
+        total_bytes = sum(t["size"] for t in torrents)
+        return total_bytes / (1024 ** 3)  # 转换为GB
+    
+    except Exception as e:
+        print(f"[Downloader] 获取下载器总大小失败: {e}")
+        return 0.0
+
+
+async def delete_torrents_by_free_space(
+    downloader, 
+    torrents: List[Dict[str, Any]], 
+    need_to_free_gb: float,
+    strategy: str = "oldest_first"
+) -> List[str]:
+    """根据需要释放的空间删除种子
+    
+    Args:
+        downloader: 下载器对象
+        torrents: 种子列表
+        need_to_free_gb: 需要释放的空间（GB）
+        strategy: 删除策略
+    
+    Returns:
+        已删除的种子哈希列表
+    """
+    try:
+        if need_to_free_gb <= 0:
+            return []  # 不需要释放空间
+        
+        # 根据策略排序种子
+        if strategy == "oldest_first":
+            # 按添加时间排序（最旧的优先）
+            sorted_torrents = sorted(torrents, key=lambda x: x["added_on"])
+        elif strategy == "largest_first":
+            # 按大小排序（最大的优先）
+            sorted_torrents = sorted(torrents, key=lambda x: x["size"], reverse=True)
+        elif strategy == "lowest_ratio":
+            # 按分享率排序（最低的优先）
+            sorted_torrents = sorted(torrents, key=lambda x: x["ratio"])
+        else:
+            sorted_torrents = torrents
+        
+        deleted_hashes = []
+        freed_space_gb = 0.0
+        
+        for torrent in sorted_torrents:
+            if freed_space_gb >= need_to_free_gb:
+                break
+            
+            # 删除种子
+            success = await delete_torrent(downloader, torrent["hash"], delete_files=True)
+            if success:
+                deleted_hashes.append(torrent["hash"])
+                torrent_size_gb = torrent["size"] / (1024 ** 3)
+                freed_space_gb += torrent_size_gb
+                print(f"[DynamicDelete] 已删除种子: {torrent['name']} ({torrent_size_gb:.2f} GB)")
+        
+        print(f"[DynamicDelete] 共删除 {len(deleted_hashes)} 个种子，释放 {freed_space_gb:.2f} GB 空间")
+        return deleted_hashes
+    
+    except Exception as e:
+        print(f"[Downloader] 动态删种失败: {e}")
+        return []
+
+
+async def delete_torrents_by_strategy(
+    downloader, 
+    torrents: List[Dict[str, Any]], 
+    target_size_gb: float,
+    strategy: str = "oldest_first"
+) -> List[str]:
+    """根据策略删除种子直到达到目标大小
+    
+    Args:
+        downloader: 下载器对象
+        torrents: 种子列表
+        target_size_gb: 目标大小（GB）
+        strategy: 删除策略
+    
+    Returns:
+        已删除的种子哈希列表
+    """
+    try:
+        current_size_gb = sum(t["size"] for t in torrents) / (1024 ** 3)
+        if current_size_gb <= target_size_gb:
+            return []  # 已经低于目标大小
+        
+        need_to_delete_gb = current_size_gb - target_size_gb
+        
+        # 根据策略排序种子
+        if strategy == "oldest_first":
+            # 按添加时间排序（最旧的优先）
+            sorted_torrents = sorted(torrents, key=lambda x: x["added_on"])
+        elif strategy == "largest_first":
+            # 按大小排序（最大的优先）
+            sorted_torrents = sorted(torrents, key=lambda x: x["size"], reverse=True)
+        elif strategy == "lowest_ratio":
+            # 按分享率排序（最低的优先）
+            sorted_torrents = sorted(torrents, key=lambda x: x["ratio"])
+        else:
+            sorted_torrents = torrents
+        
+        deleted_hashes = []
+        deleted_size_gb = 0.0
+        
+        for torrent in sorted_torrents:
+            if deleted_size_gb >= need_to_delete_gb:
+                break
+            
+            # 删除种子
+            success = await delete_torrent(downloader, torrent["hash"], delete_files=True)
+            if success:
+                deleted_hashes.append(torrent["hash"])
+                deleted_size_gb += torrent["size"] / (1024 ** 3)
+                print(f"[DynamicDelete] 已删除种子: {torrent['name']} ({torrent['size'] / (1024**3):.2f} GB)")
+        
+        print(f"[DynamicDelete] 共删除 {len(deleted_hashes)} 个种子，释放 {deleted_size_gb:.2f} GB 空间")
+        return deleted_hashes
+    
+    except Exception as e:
+        print(f"[Downloader] 动态删种失败: {e}")
+        return []
+    """获取磁盘空间信息
+    
+    Args:
+        downloader: 下载器配置对象
+    
+    Returns:
+        磁盘空间信息字典，包含剩余空间等信息
+    """
+    try:
+        if downloader.type == "qbittorrent":
+            client = _get_qb_client(downloader)
+            # 使用 sync_maindata 获取服务器状态信息
+            maindata = client.sync_maindata()
+            
+            if maindata and "server_state" in maindata:
+                server_state = maindata["server_state"]
+                
+                # 提取磁盘空间相关信息
+                disk_info = {}
+                
+                # 剩余磁盘空间（字节）
+                if "free_space_on_disk" in server_state:
+                    disk_info["free_space_bytes"] = server_state["free_space_on_disk"]
+                    # 转换为更友好的单位
+                    free_gb = server_state["free_space_on_disk"] / (1024 ** 3)
+                    disk_info["free_space_gb"] = round(free_gb, 2)
+                
+                # 其他可能的服务器状态信息
+                if "dl_info_speed" in server_state:
+                    disk_info["download_speed"] = server_state["dl_info_speed"]
+                if "up_info_speed" in server_state:
+                    disk_info["upload_speed"] = server_state["up_info_speed"]
+                if "dl_info_data" in server_state:
+                    disk_info["total_downloaded"] = server_state["dl_info_data"]
+                if "up_info_data" in server_state:
+                    disk_info["total_uploaded"] = server_state["up_info_data"]
+                
+                return disk_info
+        
+        elif downloader.type == "transmission":
+            client = _get_tr_client(downloader)
+            # Transmission 的 session 信息中包含一些统计数据
+            session = client.get_session()
+            
+            disk_info = {}
+            
+            # Transmission 没有直接的磁盘空间 API，但可以获取下载目录
+            if hasattr(session, 'download_dir'):
+                disk_info["download_dir"] = session.download_dir
+            
+            # 可以通过系统调用获取磁盘空间（需要额外实现）
+            # 这里先返回基本信息
+            return disk_info
+        
+        return None
+    
+    except Exception as e:
+        print(f"[Downloader] 获取磁盘空间信息失败: {e}")
+        return None
+
+
 async def get_server_stats(downloader) -> Optional[Dict[str, Any]]:
     """获取下载器服务器统计信息
     

@@ -32,6 +32,11 @@ interface DownloaderStats {
   seeding_count: number;
   incomplete_torrents: any[];
   is_active: boolean;
+  download_speed: number;
+  upload_speed: number;
+  connection_status: string;
+  free_space_gb: number;
+  free_space_bytes: number;
 }
 
 interface SystemStats {
@@ -71,6 +76,15 @@ const formatBytes = (bytes: number): string => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 };
 
+// 格式化速度
+const formatSpeed = (bytesPerSecond: number): string => {
+  if (bytesPerSecond === 0) return '0 B/s';
+  const k = 1024;
+  const sizes = ['B/s', 'KB/s', 'MB/s', 'GB/s'];
+  const i = Math.floor(Math.log(bytesPerSecond) / Math.log(k));
+  return parseFloat((bytesPerSecond / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+};
+
 // 格式化数字
 const formatNumber = (num: number): string => {
   if (num >= 1000000) {
@@ -84,6 +98,7 @@ const formatNumber = (num: number): string => {
 export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [downloadersLoading, setDownloadersLoading] = useState(false);
 
   const fetchDashboardData = async () => {
     setLoading(true);
@@ -96,12 +111,41 @@ export default function DashboardPage() {
     setLoading(false);
   };
 
+  const fetchDownloaderStats = async () => {
+    if (!data) return;
+    
+    setDownloadersLoading(true);
+    try {
+      const res = await dashboardApi.getDownloaderStats();
+      // 更新下载器状态，保持其他数据不变
+      setData(prevData => ({
+        ...prevData!,
+        downloader_stats: res.data.downloader_stats
+      }));
+    } catch (e) {
+      message.error('获取下载器状态失败');
+    }
+    setDownloadersLoading(false);
+  };
+
   useEffect(() => {
     fetchDashboardData();
-    // 每30秒刷新一次数据
-    const interval = setInterval(fetchDashboardData, 30000);
-    return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    if (!data) return;
+
+    // 初始加载完成后，每15秒刷新下载器状态
+    const downloaderInterval = setInterval(fetchDownloaderStats, 15000);
+    
+    // 每60秒刷新完整仪表盘数据（账号信息、系统统计等）
+    const dashboardInterval = setInterval(fetchDashboardData, 60000);
+    
+    return () => {
+      clearInterval(downloaderInterval);
+      clearInterval(dashboardInterval);
+    };
+  }, [data]);
 
   if (loading || !data) {
     return (
@@ -260,13 +304,25 @@ export default function DashboardPage() {
 
         {/* 下载器状态 */}
         <Col xs={24} lg={8}>
-          <Card title="下载器状态" style={{ height: 400 }}>
+          <Card 
+            title={
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>下载器状态</span>
+                {downloadersLoading && <Spin size="small" />}
+              </div>
+            } 
+            style={{ height: 400 }}
+          >
             <div style={{ maxHeight: 300, overflowY: 'auto' }}>
               {data.downloader_stats.map(downloader => (
                 <Card 
                   key={downloader.id} 
                   size="small" 
-                  style={{ marginBottom: 12 }}
+                  style={{ 
+                    marginBottom: 12,
+                    opacity: downloadersLoading ? 0.7 : 1,
+                    transition: 'opacity 0.3s'
+                  }}
                   bodyStyle={{ padding: 12 }}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
@@ -283,23 +339,63 @@ export default function DashboardPage() {
                   
                   {downloader.is_active && (
                     <div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                        <span>下载中:</span>
-                        <span style={{ color: '#1668dc', fontWeight: 'bold' }}>
-                          {downloader.downloading_count}
-                        </span>
+                      {/* 速度信息 */}
+                      <div style={{ marginBottom: 8, padding: '8px 0', borderBottom: '1px solid #f0f0f0' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                          <span style={{ color: '#1668dc' }}>↓ 下载速度:</span>
+                          <span style={{ color: '#1668dc', fontWeight: 'bold' }}>
+                            {formatSpeed(downloader.download_speed)}
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                          <span style={{ color: '#52c41a' }}>↑ 上传速度:</span>
+                          <span style={{ color: '#52c41a', fontWeight: 'bold' }}>
+                            {formatSpeed(downloader.upload_speed)}
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                          <span>连接状态:</span>
+                          <Tag color={
+                            downloader.connection_status === 'connected' ? 'green' : 
+                            downloader.connection_status === 'checking' ? 'blue' :
+                            downloader.connection_status === 'timeout' ? 'orange' :
+                            downloader.connection_status === 'error' ? 'red' : 'default'
+                          }>
+                            {downloader.connection_status === 'connected' ? '已连接' : 
+                             downloader.connection_status === 'checking' ? '检查中' :
+                             downloader.connection_status === 'timeout' ? '超时' :
+                             downloader.connection_status === 'error' ? '错误' :
+                             downloader.connection_status === 'offline' ? '离线' : '未知'}
+                          </Tag>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ color: '#722ed1' }}>💾 剩余空间:</span>
+                          <span style={{ color: '#722ed1', fontWeight: 'bold' }}>
+                            {downloader.free_space_gb > 0 ? `${downloader.free_space_gb.toFixed(1)} GB` : '未知'}
+                          </span>
+                        </div>
                       </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                        <span>做种中:</span>
-                        <span style={{ color: '#52c41a', fontWeight: 'bold' }}>
-                          {downloader.seeding_count}
-                        </span>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span>未完成:</span>
-                        <span style={{ color: '#fa8c16', fontWeight: 'bold' }}>
-                          {downloader.incomplete_torrents.length}
-                        </span>
+                      
+                      {/* 种子统计 */}
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                          <span>下载中:</span>
+                          <span style={{ color: '#1668dc', fontWeight: 'bold' }}>
+                            {downloader.downloading_count}
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                          <span>做种中:</span>
+                          <span style={{ color: '#52c41a', fontWeight: 'bold' }}>
+                            {downloader.seeding_count}
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span>未完成:</span>
+                          <span style={{ color: '#fa8c16', fontWeight: 'bold' }}>
+                            {downloader.incomplete_torrents.length}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   )}

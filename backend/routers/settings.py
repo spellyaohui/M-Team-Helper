@@ -22,6 +22,13 @@ class AutoDeleteSettings(BaseModel):
     enabled: bool = True  # 是否启用自动删种
     delete_scope: str = "all"  # 删种范围：all(全部), normal(仅正常), adult(仅成人)
     check_tags: bool = True  # 是否检查标签匹配
+    # 新增：指定下载器设置
+    downloader_id: Optional[int] = None  # 指定下载器ID，None表示所有下载器
+    # 新增：动态删种设置
+    enable_dynamic_delete: bool = False  # 是否启用动态删种
+    max_capacity_gb: float = 1000.0  # 最大容量阈值（GB）
+    min_capacity_gb: float = 800.0   # 最小容量阈值（GB）
+    delete_strategy: str = "oldest_first"  # 删除策略：oldest_first(最旧优先), largest_first(最大优先), lowest_ratio(最低分享率优先)
 
 class RefreshIntervalSettings(BaseModel):
     """刷新间隔设置"""
@@ -88,6 +95,41 @@ async def update_auto_delete_settings(
             status_code=400, 
             detail="删种范围必须是 'all'(全部)、'normal'(仅正常) 或 'adult'(仅成人) 之一"
         )
+    
+    # 验证删除策略参数
+    if settings.delete_strategy not in ["oldest_first", "largest_first", "lowest_ratio"]:
+        raise HTTPException(
+            status_code=400,
+            detail="删除策略必须是 'oldest_first'(最旧优先)、'largest_first'(最大优先) 或 'lowest_ratio'(最低分享率优先) 之一"
+        )
+    
+    # 验证动态删种设置
+    if settings.enable_dynamic_delete:
+        if settings.downloader_id is None:
+            raise HTTPException(
+                status_code=400,
+                detail="启用动态删种时必须指定下载器"
+            )
+        if settings.max_capacity_gb <= settings.min_capacity_gb:
+            raise HTTPException(
+                status_code=400,
+                detail="最大容量阈值必须大于最小容量阈值"
+            )
+        if settings.min_capacity_gb <= 0 or settings.max_capacity_gb <= 0:
+            raise HTTPException(
+                status_code=400,
+                detail="容量阈值必须大于0"
+            )
+    
+    # 验证下载器ID是否存在（如果指定了的话）
+    if settings.downloader_id is not None:
+        from models import Downloader
+        downloader = db.query(Downloader).filter(Downloader.id == settings.downloader_id).first()
+        if not downloader:
+            raise HTTPException(
+                status_code=400,
+                detail=f"下载器ID {settings.downloader_id} 不存在"
+            )
     
     setting = db.query(SystemSettings).filter(
         SystemSettings.key == "auto_delete_expired"
