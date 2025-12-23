@@ -1065,14 +1065,14 @@ const SettingsPage: React.FC = () => {
                 name="max_capacity_gb"
                 tooltip="超过此容量时开始删种"
               >
-                <InputNumber
+                <InputNumber<number>
                   min={1}
                   max={10000}
                   step={10}
                   style={{ width: '100%' }}
                   placeholder="1000"
                   formatter={value => `${value} GB`}
-                  parser={value => value!.replace(' GB', '')}
+                  parser={value => parseFloat(value!.replace(' GB', '')) || 0}
                 />
               </Form.Item>
             </Col>
@@ -1088,14 +1088,14 @@ const SettingsPage: React.FC = () => {
                 name="min_capacity_gb"
                 tooltip="删种至此容量后停止"
               >
-                <InputNumber
+                <InputNumber<number>
                   min={1}
                   max={10000}
                   step={10}
                   style={{ width: '100%' }}
                   placeholder="800"
                   formatter={value => `${value} GB`}
-                  parser={value => value!.replace(' GB', '')}
+                  parser={value => parseFloat(value!.replace(' GB', '')) || 0}
                 />
               </Form.Item>
             </Col>
