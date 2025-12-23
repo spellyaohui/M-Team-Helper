@@ -4,6 +4,7 @@ from sqlalchemy import func
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
+import asyncio
 
 from database import get_db
 from models import Account, DownloadHistory, FilterRule, Downloader, beijing_now
@@ -105,24 +106,32 @@ async def get_dashboard_data(db: Session = Depends(get_db)):
         ) for acc in accounts
     ]
     
-    # 下载器统计
+    # 下载器统计 - 使用并发获取，不阻塞主进程
     downloaders = db.query(Downloader).all()
-    downloader_stats = []
     
-    for downloader in downloaders:
+    async def fetch_downloader_stats(downloader) -> DownloaderStats:
+        """异步获取单个下载器状态，带超时控制"""
         downloading_count = 0
         seeding_count = 0
         incomplete_torrents = []
         
         if downloader.is_active:
             try:
-                downloading_count = await get_downloading_count(downloader)
-                seeding_count = await get_seeding_count(downloader)
-                incomplete_torrents = await get_incomplete_torrents(downloader)
+                # 使用 asyncio.wait_for 设置 5 秒超时
+                downloading_count, seeding_count, incomplete_torrents = await asyncio.wait_for(
+                    asyncio.gather(
+                        get_downloading_count(downloader),
+                        get_seeding_count(downloader),
+                        get_incomplete_torrents(downloader)
+                    ),
+                    timeout=5.0
+                )
+            except asyncio.TimeoutError:
+                print(f"[Dashboard] 获取下载器 {downloader.name} 数据超时")
             except Exception as e:
-                print(f"获取下载器 {downloader.name} 数据失败: {e}")
+                print(f"[Dashboard] 获取下载器 {downloader.name} 数据失败: {e}")
         
-        downloader_stats.append(DownloaderStats(
+        return DownloaderStats(
             id=downloader.id,
             name=downloader.name,
             type=downloader.type,
@@ -130,7 +139,12 @@ async def get_dashboard_data(db: Session = Depends(get_db)):
             seeding_count=seeding_count,
             incomplete_torrents=incomplete_torrents,
             is_active=downloader.is_active
-        ))
+        )
+    
+    # 并发获取所有下载器状态
+    downloader_stats = await asyncio.gather(
+        *[fetch_downloader_stats(d) for d in downloaders]
+    )
     
     # 最近活动（最近10条下载记录）
     recent_history = db.query(DownloadHistory, Account.username).join(

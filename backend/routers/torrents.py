@@ -93,6 +93,70 @@ async def search_torrents(params: TorrentSearchParams, db: Session = Depends(get
         data=torrents
     )
 
+@router.get("/categories")
+async def get_categories(
+    account_id: int = Query(...),
+    db: Session = Depends(get_db)
+):
+    """获取种子分类列表"""
+    account = db.query(Account).filter(Account.id == account_id).first()
+    if not account or not account.api_key:
+        raise HTTPException(status_code=404, detail="账号不存在或未配置")
+    
+    api = MTeamAPI(account.api_key)
+    result = await api.get_categories()
+    
+    if not result["success"]:
+        raise HTTPException(status_code=500, detail=result.get("error"))
+    
+    return {"success": True, "data": result["data"]}
+
+@router.get("/metadata")
+async def get_metadata(
+    account_id: int = Query(...),
+    types: str = Query("categories", description="获取的元数据类型，用逗号分隔：categories,sources,mediums,standards,videoCodecs,audioCodecs,teams,processings"),
+    db: Session = Depends(get_db)
+):
+    """获取种子元数据（分类、来源、介质等）"""
+    account = db.query(Account).filter(Account.id == account_id).first()
+    if not account or not account.api_key:
+        raise HTTPException(status_code=404, detail="账号不存在或未配置")
+    
+    api = MTeamAPI(account.api_key)
+    result_data = {}
+    
+    type_list = [t.strip() for t in types.split(",")]
+    
+    for metadata_type in type_list:
+        try:
+            if metadata_type == "categories":
+                result = await api.get_categories()
+            elif metadata_type == "sources":
+                result = await api.get_source_list()
+            elif metadata_type == "mediums":
+                result = await api.get_medium_list()
+            elif metadata_type == "standards":
+                result = await api.get_standard_list()
+            elif metadata_type == "videoCodecs":
+                result = await api.get_video_codec_list()
+            elif metadata_type == "audioCodecs":
+                result = await api.get_audio_codec_list()
+            elif metadata_type == "teams":
+                result = await api.get_team_list()
+            elif metadata_type == "processings":
+                result = await api.get_processing_list()
+            else:
+                continue
+            
+            if result["success"]:
+                result_data[metadata_type] = result["data"]
+            else:
+                result_data[metadata_type] = {"error": result.get("error")}
+        except Exception as e:
+            result_data[metadata_type] = {"error": str(e)}
+    
+    return {"success": True, "data": result_data}
+
 @router.get("/{torrent_id}")
 async def get_torrent_detail(
     torrent_id: str,

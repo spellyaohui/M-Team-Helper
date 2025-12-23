@@ -28,6 +28,16 @@ class RefreshIntervalSettings(BaseModel):
     account_refresh_interval: int = 300  # 账号信息刷新间隔（秒），默认5分钟
     torrent_check_interval: int = 180   # 种子检查间隔（秒），默认3分钟
     expired_check_interval: int = 60    # 过期检查间隔（秒），默认1分钟
+
+class TimeRange(BaseModel):
+    """时间段"""
+    start: str  # 开始时间，格式 HH:MM
+    end: str    # 结束时间，格式 HH:MM
+
+class ScheduleSettings(BaseModel):
+    """定时运行设置"""
+    enabled: bool = False  # 是否启用定时控制
+    time_ranges: list = []  # 时间段列表，每个元素包含 start, end, auto_download, expired_check
     
 class UpdateSettingRequest(BaseModel):
     value: Any
@@ -211,6 +221,103 @@ async def get_scheduler_status_api():
     """获取调度器状态"""
     from services.scheduler import get_scheduler_status
     return get_scheduler_status()
+
+
+@router.get("/schedule-control")
+async def get_schedule_control(db: Session = Depends(get_db)):
+    """获取定时运行控制设置"""
+    setting = db.query(SystemSettings).filter(
+        SystemSettings.key == "schedule_control"
+    ).first()
+    
+    if not setting:
+        # 返回默认设置
+        default_settings = {
+            "enabled": False,
+            "time_ranges": []
+        }
+        return {
+            "key": "schedule_control",
+            "value": default_settings,
+            "description": "定时运行控制设置"
+        }
+    
+    try:
+        value = json.loads(setting.value)
+        return {
+            "key": setting.key,
+            "value": value,
+            "description": setting.description
+        }
+    except json.JSONDecodeError:
+        default_settings = {
+            "enabled": False,
+            "time_ranges": []
+        }
+        return {
+            "key": "schedule_control",
+            "value": default_settings,
+            "description": "定时运行控制设置"
+        }
+
+
+@router.put("/schedule-control")
+async def update_schedule_control(
+    settings: ScheduleSettings,
+    db: Session = Depends(get_db)
+):
+    """更新定时运行控制设置
+    
+    time_ranges 格式示例：
+    [
+        {
+            "start": "00:00",
+            "end": "08:00",
+            "auto_download": false,
+            "expired_check": true,
+            "account_refresh": true
+        },
+        {
+            "start": "08:00",
+            "end": "24:00",
+            "auto_download": true,
+            "expired_check": true,
+            "account_refresh": true
+        }
+    ]
+    """
+    setting = db.query(SystemSettings).filter(
+        SystemSettings.key == "schedule_control"
+    ).first()
+    
+    settings_dict = {
+        "enabled": settings.enabled,
+        "time_ranges": settings.time_ranges
+    }
+    
+    if setting:
+        setting.value = json.dumps(settings_dict, ensure_ascii=False)
+        setting.description = "定时运行控制设置"
+    else:
+        setting = SystemSettings(
+            key="schedule_control",
+            value=json.dumps(settings_dict, ensure_ascii=False),
+            description="定时运行控制设置"
+        )
+        db.add(setting)
+    
+    db.commit()
+    db.refresh(setting)
+    
+    return {
+        "success": True,
+        "message": "定时运行控制设置已更新",
+        "data": {
+            "key": setting.key,
+            "value": json.loads(setting.value),
+            "description": setting.description
+        }
+    }
 
 
 @router.post("/restart-scheduler")

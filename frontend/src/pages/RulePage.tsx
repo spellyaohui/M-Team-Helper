@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Table, Button, Modal, Form, Input, Switch, InputNumber, Select, message, Space, Tag, Popconfirm } from 'antd';
+import { Table, Button, Modal, Form, Input, Switch, InputNumber, Select, message, Space, Tag, Popconfirm, Checkbox } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
-import { accountApi, ruleApi, downloaderApi } from '../api';
+import { accountApi, ruleApi, downloaderApi, torrentApi } from '../api';
 
 interface Rule {
   id: number;
@@ -15,6 +15,7 @@ interface Rule {
   max_size: number | null;
   min_seeders: number | null;
   max_seeders: number | null;
+  categories: string[] | null;
   keywords: string | null;
   exclude_keywords: string | null;
   downloader_id: number | null;
@@ -37,10 +38,16 @@ export default function RulePage() {
   const [editingRule, setEditingRule] = useState<Rule | null>(null);
   const [availableTags, setAvailableTags] = useState<string[]>([]);
   const [tagsLoading, setTagsLoading] = useState(false);
+  const [categories, setCategories] = useState<any[]>([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(false);
+  const [enableCategoryFilter, setEnableCategoryFilter] = useState(false);
   const [form] = Form.useForm();
 
   // 监听下载器选择变化，获取对应的标签列表
   const selectedDownloaderId = Form.useWatch('downloader_id', form);
+  // 监听账号和模式变化，获取对应的分类列表
+  const selectedAccountId = Form.useWatch('account_id', form);
+  const selectedMode = Form.useWatch('mode', form);
 
   useEffect(() => {
     if (selectedDownloaderId) {
@@ -59,6 +66,60 @@ export default function RulePage() {
       setAvailableTags([]);
     }
   }, [selectedDownloaderId]);
+
+  // 获取分类列表
+  useEffect(() => {
+    if (selectedAccountId && enableCategoryFilter) {
+      setCategoriesLoading(true);
+      torrentApi.getCategories(selectedAccountId)
+        .then(res => {
+          if (res.data.success) {
+            const categoryData = res.data.data;
+            const categoryList = categoryData.list || [];
+            
+            // 只保留二级分类（有 parent 的分类）
+            const secondLevelCategories = categoryList.filter((cat: any) => cat.parent !== null);
+            
+            // 用 API 返回的 adult 数组判断成人分类
+            const adultCategoryIds = new Set((categoryData.adult || []).map((id: any) => String(id)));
+            
+            let filteredCategories = secondLevelCategories;
+            
+            if (selectedMode === 'normal') {
+              // 综合区：排除成人分类
+              filteredCategories = secondLevelCategories.filter((cat: any) => 
+                !adultCategoryIds.has(String(cat.id))
+              );
+            } else if (selectedMode === 'adult') {
+              // 成人区：只显示成人分类
+              filteredCategories = secondLevelCategories.filter((cat: any) => 
+                adultCategoryIds.has(String(cat.id))
+              );
+            }
+            
+            // 按 parent 和 order 排序
+            filteredCategories.sort((a: any, b: any) => {
+              if (a.parent !== b.parent) {
+                return String(a.parent).localeCompare(String(b.parent));
+              }
+              return parseInt(a.order || '0') - parseInt(b.order || '0');
+            });
+            
+            setCategories(filteredCategories);
+          }
+        })
+        .catch(err => {
+          console.error('获取分类失败:', err);
+          message.error('获取分类失败');
+          setCategories([]);
+        })
+        .finally(() => {
+          setCategoriesLoading(false);
+        });
+    } else {
+      setCategories([]);
+    }
+  }, [selectedAccountId, selectedMode, enableCategoryFilter]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -87,16 +148,23 @@ export default function RulePage() {
 
   const handleSubmit = async (values: any) => {
     try {
+      // 处理分类数据：如果未启用分类筛选，则清空categories字段
+      const submitData = {
+        ...values,
+        categories: enableCategoryFilter ? values.categories : null
+      };
+      
       if (editingRule) {
-        await ruleApi.update(editingRule.id, values);
+        await ruleApi.update(editingRule.id, submitData);
         message.success('更新成功');
       } else {
-        await ruleApi.create(values);
+        await ruleApi.create(submitData);
         message.success('创建成功');
       }
       setModalOpen(false);
       form.resetFields();
       setEditingRule(null);
+      setEnableCategoryFilter(false);
       fetchData();
     } catch (e: any) {
       message.error(e.response?.data?.detail || '操作失败');
@@ -105,7 +173,12 @@ export default function RulePage() {
 
   const handleEdit = (rule: Rule) => {
     setEditingRule(rule);
-    form.setFieldsValue(rule);
+    // 设置分类过滤器状态
+    setEnableCategoryFilter(!!(rule.categories && rule.categories.length > 0));
+    form.setFieldsValue({
+      ...rule,
+      enable_category_filter: rule.categories && rule.categories.length > 0
+    });
     setModalOpen(true);
   };
 
@@ -155,6 +228,9 @@ export default function RulePage() {
           {r.min_size && <Tag>≥{r.min_size}GB</Tag>}
           {r.max_size && <Tag>≤{r.max_size}GB</Tag>}
           {r.keywords && <Tag>关键词: {r.keywords}</Tag>}
+          {r.categories && r.categories.length > 0 && (
+            <Tag color="orange">分类: {r.categories.length}个</Tag>
+          )}
           {r.tags && r.tags.length > 0 && <Tag color="purple">标签: {r.tags.join(', ')}</Tag>}
         </Space>
       )
@@ -186,7 +262,12 @@ export default function RulePage() {
   return (
     <>
       <div style={{ marginBottom: 16 }}>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingRule(null); form.resetFields(); setModalOpen(true); }}>
+        <Button type="primary" icon={<PlusOutlined />} onClick={() => { 
+          setEditingRule(null); 
+          setEnableCategoryFilter(false);
+          form.resetFields(); 
+          setModalOpen(true); 
+        }}>
           添加规则
         </Button>
       </div>
@@ -195,7 +276,11 @@ export default function RulePage() {
       <Modal 
         title={editingRule ? '编辑规则' : '添加规则'} 
         open={modalOpen} 
-        onCancel={() => { setModalOpen(false); setEditingRule(null); }} 
+        onCancel={() => { 
+          setModalOpen(false); 
+          setEditingRule(null); 
+          setEnableCategoryFilter(false);
+        }} 
         onOk={() => form.submit()}
         width={700}
       >
@@ -247,6 +332,45 @@ export default function RulePage() {
               <Input placeholder="如：CAM,TS" />
             </Form.Item>
           </div>
+          
+          {/* 分类选择 */}
+          <Form.Item label="分类筛选">
+            <Checkbox 
+              checked={enableCategoryFilter}
+              onChange={(e) => {
+                setEnableCategoryFilter(e.target.checked);
+                if (!e.target.checked) {
+                  form.setFieldValue('categories', []);
+                }
+              }}
+            >
+              启用指定分类筛选
+            </Checkbox>
+          </Form.Item>
+          
+          {enableCategoryFilter && (
+            <Form.Item 
+              name="categories" 
+              label="选择分类"
+              tooltip="只下载选中分类的种子。如果不选择任何分类，则下载该模式下的所有分类"
+            >
+              <Select
+                mode="multiple"
+                placeholder={selectedAccountId ? "选择要筛选的分类" : "请先选择账号"}
+                disabled={!selectedAccountId || categoriesLoading}
+                loading={categoriesLoading}
+                options={categories.map(cat => ({
+                  value: cat.id,
+                  label: `${cat.nameChs} (${cat.nameEng})`,
+                  title: cat.nameChs
+                }))}
+                showSearch
+                filterOption={(input, option) =>
+                  (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                }
+              />
+            </Form.Item>
+          )}
           
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' }}>
             <Form.Item name="downloader_id" label="推送到下载器">

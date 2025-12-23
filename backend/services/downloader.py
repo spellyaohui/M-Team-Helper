@@ -13,7 +13,8 @@ def _get_qb_client(downloader):
         port=downloader.port,
         username=downloader.username,
         password=downloader.password,
-        VERIFY_WEBUI_CERTIFICATE=False
+        VERIFY_WEBUI_CERTIFICATE=False,
+        REQUESTS_ARGS={'timeout': (3, 5)}  # 连接超时3秒，读取超时5秒
     )
     client.auth_log_in()
     return client
@@ -27,7 +28,8 @@ def _get_tr_client(downloader):
         port=downloader.port,
         username=downloader.username,
         password=downloader.password,
-        protocol=protocol
+        protocol=protocol,
+        timeout=5  # 5秒超时
     )
 
 

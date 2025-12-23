@@ -66,6 +66,10 @@ export const torrentApi = {
     api.get(`/torrents/${id}/download-url?account_id=${accountId}`),
   download: (id: string, accountId: number) =>
     api.post(`/torrents/${id}/download?account_id=${accountId}`, {}, { responseType: 'blob' }),
+  getCategories: (accountId: number) => 
+    api.get(`/torrents/categories?account_id=${accountId}`),
+  getMetadata: (accountId: number, types: string = 'categories') => 
+    api.get(`/torrents/metadata?account_id=${accountId}&types=${types}`),
 };
 
 // 规则相关
@@ -117,6 +121,19 @@ export const settingsApi = {
     torrent_check_interval: number;
     expired_check_interval: number;
   }) => api.put('/settings/refresh-intervals', data),
+  
+  // 定时运行控制
+  getScheduleControl: () => api.get('/settings/schedule-control'),
+  updateScheduleControl: (data: {
+    enabled: boolean;
+    time_ranges: Array<{
+      start: string;
+      end: string;
+      auto_download: boolean;
+      expired_check: boolean;
+      account_refresh: boolean;
+    }>;
+  }) => api.put('/settings/schedule-control', data),
   
   // 调度器管理
   getSchedulerStatus: () => api.get('/settings/scheduler-status'),

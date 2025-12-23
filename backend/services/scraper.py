@@ -125,6 +125,41 @@ class MTeamAPI:
             if response.status_code == 200:
                 return response.content
         return None
+    
+    async def get_categories(self) -> Dict[str, Any]:
+        """获取种子分类列表
+        
+        注意：根据API文档，这个接口不需要mode参数，返回所有分类
+        """
+        return await self._request("torrent/categoryList")
+    
+    async def get_source_list(self) -> Dict[str, Any]:
+        """获取来源列表"""
+        return await self._request("torrent/sourceList")
+    
+    async def get_medium_list(self) -> Dict[str, Any]:
+        """获取介质列表"""
+        return await self._request("torrent/mediumList")
+    
+    async def get_standard_list(self) -> Dict[str, Any]:
+        """获取标准列表"""
+        return await self._request("torrent/standardList")
+    
+    async def get_video_codec_list(self) -> Dict[str, Any]:
+        """获取视频编码列表"""
+        return await self._request("torrent/videoCodecList")
+    
+    async def get_audio_codec_list(self) -> Dict[str, Any]:
+        """获取音频编码列表"""
+        return await self._request("torrent/audioCodecList")
+    
+    async def get_team_list(self) -> Dict[str, Any]:
+        """获取制作组列表"""
+        return await self._request("torrent/teamList")
+    
+    async def get_processing_list(self) -> Dict[str, Any]:
+        """获取处理列表"""
+        return await self._request("torrent/processingList")
 
 
 # 折扣类型映射

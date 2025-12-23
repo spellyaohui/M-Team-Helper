@@ -19,20 +19,17 @@ M-Team PT 站自动化助手，支持自动下载免费种子、管理多账号�
 - Node.js 18+
 - qBittorrent 或 Transmission
 
-> ⚠️ **注意**：本项目仅在 Windows 环境下测试通过，其他操作系统（Linux、macOS）请自行研究适配。
+> ⚠️ **注意**：本项目在 Windows 和 Ubuntu/宝塔 环境下测试通过。
 
 ## 快速部署
 
-### 1. 克隆项目
+### 方式一：Windows 本地部署
 
 ```bash
+# 克隆项目
 git clone https://github.com/spellyaohui/M-Team-Helper.git
 cd M-Team-Helper
-```
 
-### 2. 生产部署（推荐）
-
-```bash
 # 构建前端
 cd mteam-helper/frontend
 npm install
@@ -50,7 +47,135 @@ python main.py
 
 访问 `http://localhost:8001` 即可使用。
 
-### 3. 开发模式
+### 方式二：Ubuntu/宝塔面板部署
+
+#### 1. 安装依赖
+
+```bash
+# 安装 Python 3.10+ 和 Node.js 18+
+apt update
+apt install python3 python3-pip python3-venv nodejs npm -y
+
+# 验证版本
+python3 --version  # 需要 3.10+
+node --version     # 需要 18+
+```
+
+#### 2. 克隆项目
+
+```bash
+cd /www/wwwroot  # 宝塔默认网站目录，可自定义
+git clone https://github.com/spellyaohui/M-Team-Helper.git
+cd M-Team-Helper
+```
+
+#### 3. 构建前端
+
+```bash
+cd mteam-helper/frontend
+npm install
+npm run build
+```
+
+#### 4. 配置后端
+
+```bash
+cd ../backend
+
+# 创建虚拟环境
+python3 -m venv venv
+source venv/bin/activate
+
+# 安装依赖
+pip install -r requirements.txt
+
+# 配置环境变量
+cp .env.example .env
+nano .env  # 编辑配置
+```
+
+#### 5. 启动服务
+
+**方式 A：简单后台运行（推荐新手）**
+
+```bash
+cd /www/wwwroot/M-Team-Helper/mteam-helper/backend
+source venv/bin/activate
+nohup python main.py > output.log 2>&1 &
+
+# 查看日志
+tail -f output.log
+
+# 停止服务
+pkill -f "python main.py"
+```
+
+**方式 B：Systemd 服务（推荐生产环境）**
+
+Systemd 可以实现开机自启、崩溃自动重启。
+
+创建服务文件：
+
+```bash
+sudo nano /etc/systemd/system/mteam-helper.service
+```
+
+写入以下内容（根据实际路径修改）：
+
+```ini
+[Unit]
+Description=M-Team Helper Service
+After=network.target
+
+[Service]
+Type=simple
+User=www
+Group=www
+WorkingDirectory=/www/wwwroot/M-Team-Helper/mteam-helper/backend
+Environment="PATH=/www/wwwroot/M-Team-Helper/mteam-helper/backend/venv/bin"
+ExecStart=/www/wwwroot/M-Team-Helper/mteam-helper/backend/venv/bin/python main.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+启动服务：
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable mteam-helper
+sudo systemctl start mteam-helper
+
+# 查看状态
+sudo systemctl status mteam-helper
+
+# 查看日志
+sudo journalctl -u mteam-helper -f
+```
+
+#### 6. 宝塔面板反向代理（可选）
+
+如果需要通过域名访问，在宝塔面板中：
+
+1. 添加网站，绑定域名
+2. 设置 → 反向代理 → 添加反向代理
+3. 目标 URL：`http://127.0.0.1:8001`
+4. 发送域名：`$host`
+
+#### 7. 防火墙设置
+
+```bash
+# 如果直接通过 IP:8001 访问
+sudo ufw allow 8001
+
+# 如果使用反向代理
+sudo ufw allow 80
+sudo ufw allow 443
+```
+
+### 方式三：开发模式
 
 ```bash
 # 终端 1：后端

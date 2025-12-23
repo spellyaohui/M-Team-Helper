@@ -14,6 +14,9 @@ from config import settings, TORRENT_DIR
 
 scheduler = AsyncIOScheduler()
 
+# 记录任务上次执行时间
+last_execution_times = {}
+
 def get_refresh_intervals() -> Dict[str, int]:
     """获取刷新间隔设置"""
     db = SessionLocal()
@@ -43,8 +46,87 @@ def get_refresh_intervals() -> Dict[str, int]:
     finally:
         db.close()
 
+
+def get_schedule_control() -> Dict[str, Any]:
+    """获取定时运行控制设置"""
+    db = SessionLocal()
+    try:
+        setting = db.query(SystemSettings).filter(
+            SystemSettings.key == "schedule_control"
+        ).first()
+        
+        default_settings = {
+            "enabled": False,
+            "time_ranges": []
+        }
+        
+        if setting:
+            try:
+                return json.loads(setting.value)
+            except json.JSONDecodeError:
+                return default_settings
+        
+        return default_settings
+    finally:
+        db.close()
+
+
+def is_task_allowed(task_name: str) -> bool:
+    """检查当前时间是否允许执行指定任务
+    
+    task_name: auto_download, expired_check, account_refresh
+    """
+    control = get_schedule_control()
+    
+    # 如果未启用定时控制，默认允许所有任务
+    if not control.get("enabled", False):
+        return True
+    
+    time_ranges = control.get("time_ranges", [])
+    if not time_ranges:
+        return True
+    
+    # 获取当前北京时间
+    now = beijing_now()
+    current_time = now.strftime("%H:%M")
+    current_minutes = now.hour * 60 + now.minute
+    
+    for time_range in time_ranges:
+        start = time_range.get("start", "00:00")
+        end = time_range.get("end", "24:00")
+        
+        # 解析时间
+        start_parts = start.split(":")
+        end_parts = end.split(":")
+        start_minutes = int(start_parts[0]) * 60 + int(start_parts[1])
+        end_minutes = int(end_parts[0]) * 60 + int(end_parts[1])
+        
+        # 处理跨天的情况（如 22:00 - 06:00）
+        if start_minutes <= end_minutes:
+            # 正常情况
+            in_range = start_minutes <= current_minutes < end_minutes
+        else:
+            # 跨天情况
+            in_range = current_minutes >= start_minutes or current_minutes < end_minutes
+        
+        if in_range:
+            # 在这个时间段内，检查任务是否允许
+            return time_range.get(task_name, True)
+    
+    # 如果不在任何时间段内，默认允许
+    return True
+
+
 async def refresh_all_accounts():
     """刷新所有账号信息"""
+    # 记录执行时间
+    last_execution_times["refresh_accounts"] = beijing_now()
+    
+    # 检查是否允许执行
+    if not is_task_allowed("account_refresh"):
+        print("[Scheduler] 账号刷新任务在当前时间段被禁用，跳过")
+        return
+    
     db = SessionLocal()
     try:
         accounts = db.query(Account).filter(Account.is_active == True).all()
@@ -70,6 +152,14 @@ async def refresh_all_accounts():
 
 async def auto_download_torrents():
     """根据规则自动下载种子"""
+    # 记录执行时间
+    last_execution_times["auto_download"] = beijing_now()
+    
+    # 检查是否允许执行
+    if not is_task_allowed("auto_download"):
+        print("[Scheduler] 自动下载任务在当前时间段被禁用，跳过")
+        return
+    
     db = SessionLocal()
     try:
         # 获取所有启用的规则
@@ -230,6 +320,14 @@ async def check_expired_torrents():
     
     做种中的种子不需要删除，因为已经下载完成，不会产生下载量。
     """
+    # 记录执行时间
+    last_execution_times["check_expired"] = beijing_now()
+    
+    # 检查是否允许执行
+    if not is_task_allowed("expired_check"):
+        print("[Scheduler] 过期检查任务在当前时间段被禁用，跳过")
+        return
+    
     db = SessionLocal()
     try:
         # 获取自动删种设置
@@ -456,21 +554,99 @@ def get_scheduler_status() -> Dict[str, Any]:
     if not scheduler.running:
         return {
             "running": False,
-            "jobs": []
+            "jobs": [],
+            "schedule_control": {
+                "enabled": False,
+                "current_status": {}
+            }
         }
     
     jobs = []
     for job in scheduler.get_jobs():
         next_run = job.next_run_time
+        
+        # 获取上次执行时间
+        last_run = last_execution_times.get(job.id)
+        
         jobs.append({
             "id": job.id,
             "name": job.name or job.id,
             "next_run": next_run.isoformat() if next_run else None,
+            "last_run": last_run.isoformat() if last_run else None,
             "trigger": str(job.trigger)
         })
+    
+    # 获取时间段控制状态
+    schedule_control = get_schedule_control()
+    current_status = {}
+    
+    if schedule_control.get("enabled", False):
+        # 检查当前各任务的允许状态
+        current_status = {
+            "auto_download": is_task_allowed("auto_download"),
+            "expired_check": is_task_allowed("expired_check"),
+            "account_refresh": is_task_allowed("account_refresh"),
+            "current_time": beijing_now().strftime("%H:%M"),
+            "current_time_range": get_current_time_range()
+        }
     
     return {
         "running": True,
         "jobs": jobs,
-        "current_intervals": get_refresh_intervals()
+        "current_intervals": get_refresh_intervals(),
+        "schedule_control": {
+            "enabled": schedule_control.get("enabled", False),
+            "current_status": current_status,
+            "time_ranges": schedule_control.get("time_ranges", [])
+        }
+    }
+
+
+def get_current_time_range() -> Dict[str, Any]:
+    """获取当前时间所在的时间段信息"""
+    control = get_schedule_control()
+    
+    if not control.get("enabled", False):
+        return {"in_range": False, "description": "时间段控制未启用"}
+    
+    time_ranges = control.get("time_ranges", [])
+    if not time_ranges:
+        return {"in_range": False, "description": "未配置时间段"}
+    
+    now = beijing_now()
+    current_minutes = now.hour * 60 + now.minute
+    
+    for i, time_range in enumerate(time_ranges):
+        start = time_range.get("start", "00:00")
+        end = time_range.get("end", "24:00")
+        
+        # 解析时间
+        start_parts = start.split(":")
+        end_parts = end.split(":")
+        start_minutes = int(start_parts[0]) * 60 + int(start_parts[1])
+        end_minutes = int(end_parts[0]) * 60 + int(end_parts[1])
+        
+        # 处理跨天的情况
+        if start_minutes <= end_minutes:
+            in_range = start_minutes <= current_minutes < end_minutes
+        else:
+            in_range = current_minutes >= start_minutes or current_minutes < end_minutes
+        
+        if in_range:
+            return {
+                "in_range": True,
+                "range_index": i,
+                "start": start,
+                "end": end,
+                "description": f"当前时间段: {start} - {end}",
+                "settings": {
+                    "auto_download": time_range.get("auto_download", True),
+                    "expired_check": time_range.get("expired_check", True),
+                    "account_refresh": time_range.get("account_refresh", True)
+                }
+            }
+    
+    return {
+        "in_range": False,
+        "description": "当前时间不在任何配置的时间段内"
     }
