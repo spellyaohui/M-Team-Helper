@@ -38,7 +38,7 @@ npm run build
 
 # 配置并启动后端
 cd ../backend
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 cp .env.example .env
 # 编辑 .env 文件
 
