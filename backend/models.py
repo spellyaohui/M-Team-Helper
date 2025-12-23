@@ -79,6 +79,17 @@ class Downloader(Base):
     
     created_at = Column(DateTime, default=datetime.utcnow)
 
+class SystemSettings(Base):
+    """系统设置"""
+    __tablename__ = "system_settings"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    key = Column(String(100), unique=True, index=True)  # 设置键名
+    value = Column(Text)  # 设置值（JSON 字符串）
+    description = Column(String(500), nullable=True)  # 设置描述
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
 class DownloadHistory(Base):
     """下载历史"""
     __tablename__ = "download_history"

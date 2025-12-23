@@ -32,7 +32,9 @@ export default function DownloaderPage() {
     setLoading(false);
   };
 
-  useEffect(() => { fetchDownloaders(); }, []);
+  useEffect(() => { 
+    fetchDownloaders(); 
+  }, []);
 
   const handleAdd = async (values: any) => {
     try {
@@ -113,13 +115,13 @@ export default function DownloaderPage() {
 
   return (
     <>
-      <div style={{ marginBottom: 16 }}>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalOpen(true)}>
-          添加下载器
-        </Button>
-      </div>
+      <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalOpen(true)} style={{ marginBottom: 16 }}>
+        添加下载器
+      </Button>
+
       <Table columns={columns} dataSource={downloaders} rowKey="id" loading={loading} />
       
+      {/* 添加下载器弹窗 */}
       <Modal title="添加下载器" open={modalOpen} onCancel={() => setModalOpen(false)} onOk={() => form.submit()}>
         <Form form={form} layout="vertical" onFinish={handleAdd}>
           <Form.Item name="name" label="名称" rules={[{ required: true }]}>

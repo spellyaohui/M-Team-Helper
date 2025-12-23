@@ -5,7 +5,12 @@ from typing import Optional, List
 
 from database import get_db
 from models import Downloader
-from services.downloader import test_downloader_connection, get_tags
+from services.downloader import (
+    test_downloader_connection, 
+    get_tags, 
+    get_disk_space_info, 
+    get_server_stats
+)
 
 router = APIRouter(prefix="/downloaders", tags=["下载器管理"])
 
@@ -76,3 +81,31 @@ async def get_downloader_tags(downloader_id: int, db: Session = Depends(get_db))
     
     tags = await get_tags(downloader)
     return {"tags": tags}
+
+
+@router.get("/{downloader_id}/disk-space")
+async def get_downloader_disk_space(downloader_id: int, db: Session = Depends(get_db)):
+    """获取下载器磁盘空间信息"""
+    downloader = db.query(Downloader).filter(Downloader.id == downloader_id).first()
+    if not downloader:
+        raise HTTPException(status_code=404, detail="下载器不存在")
+    
+    disk_info = await get_disk_space_info(downloader)
+    if disk_info is None:
+        raise HTTPException(status_code=500, detail="无法获取磁盘空间信息")
+    
+    return disk_info
+
+
+@router.get("/{downloader_id}/stats")
+async def get_downloader_stats(downloader_id: int, db: Session = Depends(get_db)):
+    """获取下载器服务器统计信息"""
+    downloader = db.query(Downloader).filter(Downloader.id == downloader_id).first()
+    if not downloader:
+        raise HTTPException(status_code=404, detail="下载器不存在")
+    
+    stats = await get_server_stats(downloader)
+    if stats is None:
+        raise HTTPException(status_code=500, detail="无法获取服务器统计信息")
+    
+    return stats

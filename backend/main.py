@@ -35,6 +35,14 @@ app.include_router(torrents.router)
 app.include_router(rules.router)
 app.include_router(history.router)
 
+# 导入设置路由
+from routers import settings
+app.include_router(settings.router)
+
+# 导入仪表盘路由
+from routers import dashboard
+app.include_router(dashboard.router)
+
 # 前端静态文件目录
 FRONTEND_DIR = (Path(__file__).resolve().parent.parent / "frontend" / "dist")
 

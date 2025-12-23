@@ -1,8 +1,9 @@
 import axios from 'axios';
 
-// 生产环境使用相对路径（同源），开发环境使用代理
+// 生产环境和开发环境的API配置
+const isDevelopment = import.meta.env.DEV;
 const api = axios.create({
-  baseURL: '',  // 使用相对路径，前后端同源
+  baseURL: isDevelopment ? 'http://localhost:8001' : '',
   timeout: 30000,
 });
 
@@ -92,6 +93,46 @@ export const historyApi = {
     api.get('/history/', { params }),
   delete: (id: number) => api.delete(`/history/${id}`),
   clear: (accountId?: number) => api.delete('/history/', { params: { account_id: accountId } }),
+  syncStatus: () => api.post('/history/sync-status'),
+  getStatusMapping: () => api.get('/history/status-mapping'),
+  uploadTorrent: (formData: FormData) => api.post('/history/upload-torrent', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }),
+  getDownloaderTags: (downloaderId: number) => api.get(`/history/downloader-tags/${downloaderId}`),
+};
+
+// 设置相关
+export const settingsApi = {
+  getAutoDelete: () => api.get('/settings/auto-delete'),
+  updateAutoDelete: (data: {
+    enabled: boolean;
+    delete_scope: 'all' | 'normal' | 'adult';
+    check_tags: boolean;
+  }) => api.put('/settings/auto-delete', data),
+  
+  // 刷新间隔设置
+  getRefreshIntervals: () => api.get('/settings/refresh-intervals'),
+  updateRefreshIntervals: (data: {
+    account_refresh_interval: number;
+    torrent_check_interval: number;
+    expired_check_interval: number;
+  }) => api.put('/settings/refresh-intervals', data),
+  
+  // 调度器管理
+  getSchedulerStatus: () => api.get('/settings/scheduler-status'),
+  restartScheduler: () => api.post('/settings/restart-scheduler'),
+  
+  getAllSettings: () => api.get('/settings/'),
+  getSetting: (key: string) => api.get(`/settings/${key}`),
+  updateSetting: (key: string, data: { value: any; description?: string }) => 
+    api.put(`/settings/${key}`, data),
+  deleteSetting: (key: string) => api.delete(`/settings/${key}`),
+};
+
+// 仪表盘相关
+export const dashboardApi = {
+  getDashboardData: () => api.get('/dashboard/'),
+  getAccountStats: (accountId: number) => api.get(`/dashboard/accounts/${accountId}/stats`),
 };
 
 export default api;

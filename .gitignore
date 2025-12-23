@@ -19,6 +19,9 @@ ENV/
 backend/data/mteam.db
 backend/data/torrents/
 
+# 清空数据脚本（不上传到仓库）
+backend/clear_data.py
+
 # Node.js
 node_modules/
 frontend/node_modules/

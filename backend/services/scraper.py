@@ -84,7 +84,7 @@ class MTeamAPI:
     
     async def get_torrent_detail(self, torrent_id: str) -> Dict[str, Any]:
         """获取种子详情"""
-        return await self._request("torrent/detail", {"id": torrent_id})
+        return await self._request("torrent/detail", {"id": torrent_id}, use_form=True)
     
     async def gen_download_token(self, torrent_id: str) -> Dict[str, Any]:
         """生成种子下载链接"""

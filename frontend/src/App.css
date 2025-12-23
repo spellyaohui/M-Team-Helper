@@ -1,12 +1,28 @@
-/* 全局样式 */
+/* 全局样式 - 支持浅色和深色主题 */
 :root {
   --primary-color: #1668dc;
+}
+
+/* 深色主题变量 */
+:root {
   --bg-dark: #0a0a0a;
   --bg-card: #141414;
   --bg-sider: #0d0d0d;
   --border-color: #303030;
   --text-primary: #ffffff;
   --text-secondary: #8c8c8c;
+}
+
+/* 浅色主题变量 - 通过媒体查询自动应用 */
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg-dark: #f5f5f5;
+    --bg-card: #ffffff;
+    --bg-sider: #ffffff;
+    --border-color: #d9d9d9;
+    --text-primary: #000000;
+    --text-secondary: #666666;
+  }
 }
 
 /* 加载页面 */
@@ -39,12 +55,19 @@
 
 .login-card {
   width: 400px;
-  background: rgba(20, 20, 20, 0.9) !important;
+  background: var(--bg-card) !important;
   backdrop-filter: blur(20px);
   border: 1px solid var(--border-color) !important;
   border-radius: 16px !important;
   padding: 20px;
   z-index: 1;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+}
+
+@media (prefers-color-scheme: dark) {
+  .login-card {
+    background: rgba(20, 20, 20, 0.9) !important;
+  }
 }
 
 .login-header {
@@ -72,6 +95,12 @@
   border-color: var(--border-color) !important;
   border-radius: 8px !important;
   padding: 12px 16px;
+}
+
+@media (prefers-color-scheme: light) {
+  .login-form .ant-input-affix-wrapper {
+    background: rgba(0, 0, 0, 0.02) !important;
+  }
 }
 
 .login-form .ant-input-affix-wrapper:hover,
@@ -159,11 +188,15 @@
   background: rgba(255, 255, 255, 0.05) !important;
 }
 
+@media (prefers-color-scheme: light) {
+  .app-menu .ant-menu-item:hover:not(.ant-menu-item-selected) {
+    background: rgba(0, 0, 0, 0.04) !important;
+  }
+}
+
 /* 头部 */
 .app-header {
   padding: 0 24px !important;
-  background: var(--bg-card) !important;
-  border-bottom: 1px solid var(--border-color);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -173,7 +206,6 @@
 .header-title {
   font-size: 18px;
   font-weight: 600;
-  color: var(--text-primary);
 }
 
 .header-user {
@@ -190,12 +222,17 @@
   background: rgba(255, 255, 255, 0.05);
 }
 
+@media (prefers-color-scheme: light) {
+  .header-user:hover {
+    background: rgba(0, 0, 0, 0.04);
+  }
+}
+
 .user-avatar {
   background: var(--primary-color) !important;
 }
 
 .user-name {
-  color: var(--text-primary);
   font-weight: 500;
 }
 
@@ -203,7 +240,6 @@
 .app-content {
   margin: 0;
   padding: 24px;
-  background: var(--bg-dark);
   overflow: auto;
 }
 
@@ -224,6 +260,12 @@
   background: rgba(255, 255, 255, 0.02) !important;
   border-bottom: 1px solid var(--border-color) !important;
   font-weight: 600;
+}
+
+@media (prefers-color-scheme: light) {
+  .ant-table-thead > tr > th {
+    background: rgba(0, 0, 0, 0.02) !important;
+  }
 }
 
 .ant-table-tbody > tr > td {
@@ -262,6 +304,15 @@
   border-radius: 6px !important;
 }
 
+@media (prefers-color-scheme: light) {
+  .ant-input,
+  .ant-input-affix-wrapper,
+  .ant-select-selector,
+  .ant-input-number {
+    background: rgba(0, 0, 0, 0.02) !important;
+  }
+}
+
 .ant-input:hover,
 .ant-input-affix-wrapper:hover,
 .ant-select-selector:hover,
@@ -294,6 +345,12 @@
   border-radius: 6px !important;
 }
 
+@media (prefers-color-scheme: light) {
+  .ant-pagination-item {
+    background: rgba(0, 0, 0, 0.02) !important;
+  }
+}
+
 .ant-pagination-item-active {
   background: var(--primary-color) !important;
   border-color: var(--primary-color) !important;
@@ -302,6 +359,12 @@
 /* Switch 美化 */
 .ant-switch {
   background: rgba(255, 255, 255, 0.2) !important;
+}
+
+@media (prefers-color-scheme: light) {
+  .ant-switch {
+    background: rgba(0, 0, 0, 0.15) !important;
+  }
 }
 
 .ant-switch-checked {

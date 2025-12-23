@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
-import { Table, Button, Select, Tag, message, Popconfirm } from 'antd';
-import { DeleteOutlined, ClearOutlined } from '@ant-design/icons';
+import { Table, Button, Select, Tag, message, Popconfirm, Space, Tooltip, Modal, Upload, Form, Input } from 'antd';
+import { DeleteOutlined, ClearOutlined, SyncOutlined, InfoCircleOutlined, UploadOutlined, InboxOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { accountApi, historyApi } from '../api';
+import { accountApi, historyApi, downloaderApi } from '../api';
+
+const { Dragger } = Upload;
 
 interface History {
   id: number;
@@ -27,13 +29,19 @@ const formatBytes = (bytes: number) => {
 };
 
 const statusMap: Record<string, { text: string; color: string }> = {
+  pending: { text: '等待中', color: 'orange' },
+  downloading: { text: '下载中', color: 'blue' },
+  paused: { text: '已暂停', color: 'default' },
+  queued: { text: '队列中', color: 'cyan' },
+  completed: { text: '已完成', color: 'green' },
+  seeding: { text: '做种中', color: 'lime' },
+  deleted: { text: '已删除', color: 'red' },
+  failed: { text: '失败', color: 'red' },
+  expired_deleted: { text: '过期已删', color: 'volcano' },
+  // 兼容旧状态
   downloaded: { text: '已下载', color: 'green' },
   pushing: { text: '推送中', color: 'blue' },
   push_failed: { text: '推送失败', color: 'red' },
-  pending: { text: '等待中', color: 'orange' },
-  completed: { text: '已完成', color: 'green' },
-  expired_deleted: { text: '过期已删', color: 'volcano' },
-  failed: { text: '失败', color: 'red' },
 };
 
 const discountMap: Record<string, { text: string; color: string }> = {
@@ -48,13 +56,20 @@ const discountMap: Record<string, { text: string; color: string }> = {
 export default function HistoryPage() {
   const [history, setHistory] = useState<History[]>([]);
   const [accounts, setAccounts] = useState<any[]>([]);
+  const [downloaders, setDownloaders] = useState<any[]>([]);
   const [accountId, setAccountId] = useState<number | undefined>();
   const [loading, setLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadModalVisible, setUploadModalVisible] = useState(false);
+  const [availableTags, setAvailableTags] = useState<string[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
+  const [uploadForm] = Form.useForm();
 
   useEffect(() => {
     accountApi.list().then(res => setAccounts(res.data));
+    downloaderApi.list().then(res => setDownloaders(res.data));
   }, []);
 
   const fetchHistory = async (p = page, accId = accountId) => {
@@ -88,6 +103,101 @@ export default function HistoryPage() {
       fetchHistory();
     } catch (e) {
       message.error('清空失败');
+    }
+  };
+
+  const handleSyncStatus = async () => {
+    setSyncing(true);
+    try {
+      const response = await historyApi.syncStatus();
+      
+      if (response.data.success) {
+        message.success(`状态同步完成，更新了 ${response.data.updated_count} 条记录`);
+        fetchHistory(); // 刷新列表
+      } else {
+        message.error('状态同步失败');
+      }
+    } catch (e) {
+      message.error('状态同步失败');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handleUploadDownloaderChange = async (downloaderId: number) => {
+    // 获取下载器的标签
+    try {
+      const response = await historyApi.getDownloaderTags(downloaderId);
+      if (response.data.success) {
+        setAvailableTags(response.data.tags);
+      }
+    } catch (e) {
+      console.error('获取标签失败:', e);
+      setAvailableTags([]);
+    }
+  };
+
+  const handleUploadTorrent = async (values: any) => {
+    const { file, downloader_id, account_id, save_path, tags } = values;
+    
+    console.log('上传表单数据:', values);
+    
+    if (!file || !file.fileList || file.fileList.length === 0) {
+      message.error('请选择种子文件');
+      return;
+    }
+    
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      
+      // 处理文件对象 - Ant Design Upload组件的文件结构
+      const fileObj = file.fileList[0];
+      const actualFile = fileObj.originFileObj || fileObj;
+      
+      console.log('文件对象:', fileObj);
+      console.log('实际文件:', actualFile);
+      
+      formData.append('file', actualFile);
+      formData.append('downloader_id', downloader_id.toString());
+      
+      if (account_id) formData.append('account_id', account_id.toString());
+      if (save_path) formData.append('save_path', save_path);
+      if (tags && Array.isArray(tags)) {
+        formData.append('tags', tags.join(','));
+      } else if (tags) {
+        formData.append('tags', tags);
+      }
+      
+      const response = await historyApi.uploadTorrent(formData);
+      
+      if (response.data.success) {
+        const data = response.data.data;
+        let successMsg = '种子上传成功';
+        
+        // 如果获取到了促销信息，显示在成功消息中
+        if (data.discount_type && data.discount_type !== 'NORMAL') {
+          const discountText = discountMap[data.discount_type]?.text || data.discount_type;
+          successMsg += `，促销类型：${discountText}`;
+          
+          if (data.discount_end_time) {
+            const endTime = dayjs(data.discount_end_time);
+            successMsg += `，到期时间：${endTime.format('MM-DD HH:mm')}`;
+          }
+        }
+        
+        message.success(successMsg);
+        setUploadModalVisible(false);
+        uploadForm.resetFields();
+        fetchHistory(); // 刷新列表
+      } else {
+        message.error('上传失败');
+      }
+    } catch (e: any) {
+      console.error('上传错误:', e);
+      message.error(e.response?.data?.detail || '上传失败');
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -166,7 +276,7 @@ export default function HistoryPage() {
 
   return (
     <>
-      <div style={{ marginBottom: 16, display: 'flex', gap: 16 }}>
+      <div style={{ marginBottom: 16, display: 'flex', gap: 16, alignItems: 'center' }}>
         <Select
           style={{ width: 150 }}
           placeholder="全部账号"
@@ -175,9 +285,36 @@ export default function HistoryPage() {
           onChange={(v) => { setAccountId(v); setPage(1); fetchHistory(1, v); }}
           options={accounts.map(a => ({ value: a.id, label: a.username }))}
         />
-        <Popconfirm title="确定清空所有记录？" onConfirm={handleClear}>
-          <Button danger icon={<ClearOutlined />}>清空历史</Button>
-        </Popconfirm>
+        
+        <Space>
+          <Tooltip title="与下载器同步种子状态">
+            <Button 
+              icon={<SyncOutlined />} 
+              loading={syncing}
+              onClick={handleSyncStatus}
+            >
+              同步状态
+            </Button>
+          </Tooltip>
+          
+          <Tooltip title="上传种子文件到下载器">
+            <Button 
+              icon={<UploadOutlined />} 
+              onClick={() => setUploadModalVisible(true)}
+            >
+              上传种子
+            </Button>
+          </Tooltip>
+          
+          <Popconfirm title="确定清空所有记录？" onConfirm={handleClear}>
+            <Button danger icon={<ClearOutlined />}>清空历史</Button>
+          </Popconfirm>
+        </Space>
+        
+        <div style={{ marginLeft: 'auto', color: '#666', fontSize: '12px' }}>
+          <InfoCircleOutlined style={{ marginRight: 4 }} />
+          状态说明：下载中 → 已完成 → 做种中 / 已删除
+        </div>
       </div>
       
       <Table
@@ -192,6 +329,116 @@ export default function HistoryPage() {
           onChange: (p) => { setPage(p); fetchHistory(p); }
         }}
       />
+      
+      {/* 上传种子模态框 */}
+      <Modal
+        title="上传种子文件"
+        open={uploadModalVisible}
+        onCancel={() => {
+          setUploadModalVisible(false);
+          uploadForm.resetFields();
+        }}
+        footer={null}
+        width={600}
+      >
+        <Form
+          form={uploadForm}
+          layout="vertical"
+          onFinish={handleUploadTorrent}
+        >
+          <Form.Item
+            label="种子文件"
+            name="file"
+            rules={[{ required: true, message: '请选择种子文件' }]}
+            valuePropName="file"
+          >
+            <Dragger
+              accept=".torrent"
+              maxCount={1}
+              beforeUpload={() => false}
+              showUploadList={{ showRemoveIcon: true }}
+              onChange={(info) => {
+                // 确保表单能正确获取文件
+                uploadForm.setFieldsValue({ file: info });
+              }}
+            >
+              <p className="ant-upload-drag-icon">
+                <InboxOutlined />
+              </p>
+              <p className="ant-upload-text">点击或拖拽种子文件到此区域上传</p>
+              <p className="ant-upload-hint">仅支持 .torrent 格式文件</p>
+            </Dragger>
+          </Form.Item>
+
+          <Form.Item
+            label="下载器"
+            name="downloader_id"
+            rules={[{ required: true, message: '请选择下载器' }]}
+          >
+            <Select
+              placeholder="请选择下载器"
+              onChange={handleUploadDownloaderChange}
+              options={downloaders.map(d => ({ 
+                value: d.id, 
+                label: `${d.name} (${d.host}:${d.port})` 
+              }))}
+            />
+          </Form.Item>
+
+          <Form.Item
+            label="关联账号"
+            name="account_id"
+          >
+            <Select
+              placeholder="可选，关联M-Team账号"
+              allowClear
+              options={accounts.map(a => ({ 
+                value: a.id, 
+                label: a.username 
+              }))}
+            />
+          </Form.Item>
+
+          <Form.Item
+            label="保存路径"
+            name="save_path"
+          >
+            <Input placeholder="可选，指定下载保存路径" />
+          </Form.Item>
+
+          <Form.Item
+            label="标签"
+            name="tags"
+          >
+            <Select
+              mode="tags"
+              placeholder="可选，添加标签（逗号分隔）"
+              options={availableTags.map(tag => ({ value: tag, label: tag }))}
+            />
+          </Form.Item>
+
+          <Form.Item>
+            <Space>
+              <Button type="primary" htmlType="submit" loading={uploading}>
+                上传并添加到下载器
+              </Button>
+              <Button onClick={() => {
+                setUploadModalVisible(false);
+                uploadForm.resetFields();
+              }}>
+                取消
+              </Button>
+            </Space>
+          </Form.Item>
+        </Form>
+        
+        <div style={{ color: '#666', fontSize: '12px', marginTop: 16 }}>
+          <InfoCircleOutlined style={{ marginRight: 4 }} />
+          上传的种子文件会自动添加到选择的下载器，并创建下载历史记录。
+          如果关联了M-Team账号，系统会自动查询种子的促销信息。
+          可以指定标签来更好地管理种子，系统会自动创建不存在的标签。
+        </div>
+      </Modal>
     </>
   );
 }

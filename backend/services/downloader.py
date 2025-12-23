@@ -332,6 +332,32 @@ async def get_downloading_count(downloader) -> int:
         return 0
 
 
+async def get_seeding_count(downloader) -> int:
+    """获取正在做种的种子数量
+    
+    Returns:
+        做种中的种子数量
+    """
+    try:
+        if downloader.type == "qbittorrent":
+            client = _get_qb_client(downloader)
+            # 获取所有上传中的种子（做种状态）
+            torrents = client.torrents_info(status_filter="uploading")
+            return len(torrents)
+        
+        elif downloader.type == "transmission":
+            client = _get_tr_client(downloader)
+            torrents = client.get_torrents()
+            # Transmission 中进度100%且正在上传的为做种状态
+            return len([t for t in torrents if t.progress >= 100 and t.status in ['seeding', 'seed_wait']])
+        
+        return 0
+    
+    except Exception as e:
+        print(f"[Downloader] 获取做种中种子数量失败: {e}")
+        return 0
+
+
 async def get_torrent_info_with_tags(downloader, info_hash: str) -> Optional[Dict[str, Any]]:
     """获取种子信息（包含标签）
     
@@ -385,4 +411,138 @@ async def get_torrent_info_with_tags(downloader, info_hash: str) -> Optional[Dic
     
     except Exception as e:
         print(f"[Downloader] 获取种子信息失败: {e}")
+        return None
+
+
+async def get_disk_space_info(downloader) -> Optional[Dict[str, Any]]:
+    """获取磁盘空间信息
+    
+    Args:
+        downloader: 下载器配置对象
+    
+    Returns:
+        磁盘空间信息字典，包含剩余空间等信息
+    """
+    try:
+        if downloader.type == "qbittorrent":
+            client = _get_qb_client(downloader)
+            # 使用 sync_maindata 获取服务器状态信息
+            maindata = client.sync_maindata()
+            
+            if maindata and "server_state" in maindata:
+                server_state = maindata["server_state"]
+                
+                # 提取磁盘空间相关信息
+                disk_info = {}
+                
+                # 剩余磁盘空间（字节）
+                if "free_space_on_disk" in server_state:
+                    disk_info["free_space_bytes"] = server_state["free_space_on_disk"]
+                    # 转换为更友好的单位
+                    free_gb = server_state["free_space_on_disk"] / (1024 ** 3)
+                    disk_info["free_space_gb"] = round(free_gb, 2)
+                
+                # 其他可能的服务器状态信息
+                if "dl_info_speed" in server_state:
+                    disk_info["download_speed"] = server_state["dl_info_speed"]
+                if "up_info_speed" in server_state:
+                    disk_info["upload_speed"] = server_state["up_info_speed"]
+                if "dl_info_data" in server_state:
+                    disk_info["total_downloaded"] = server_state["dl_info_data"]
+                if "up_info_data" in server_state:
+                    disk_info["total_uploaded"] = server_state["up_info_data"]
+                
+                return disk_info
+        
+        elif downloader.type == "transmission":
+            client = _get_tr_client(downloader)
+            # Transmission 的 session 信息中包含一些统计数据
+            session = client.get_session()
+            
+            disk_info = {}
+            
+            # Transmission 没有直接的磁盘空间 API，但可以获取下载目录
+            if hasattr(session, 'download_dir'):
+                disk_info["download_dir"] = session.download_dir
+            
+            # 可以通过系统调用获取磁盘空间（需要额外实现）
+            # 这里先返回基本信息
+            return disk_info
+        
+        return None
+    
+    except Exception as e:
+        print(f"[Downloader] 获取磁盘空间信息失败: {e}")
+        return None
+
+
+async def get_server_stats(downloader) -> Optional[Dict[str, Any]]:
+    """获取下载器服务器统计信息
+    
+    Args:
+        downloader: 下载器配置对象
+    
+    Returns:
+        服务器统计信息字典
+    """
+    try:
+        if downloader.type == "qbittorrent":
+            client = _get_qb_client(downloader)
+            # 获取主数据，包含服务器状态
+            maindata = client.sync_maindata()
+            
+            if maindata and "server_state" in maindata:
+                server_state = maindata["server_state"]
+                
+                stats = {
+                    "connection_status": server_state.get("connection_status", "unknown"),
+                    "dht_nodes": server_state.get("dht_nodes", 0),
+                    "dl_info_speed": server_state.get("dl_info_speed", 0),  # 当前下载速度
+                    "up_info_speed": server_state.get("up_info_speed", 0),  # 当前上传速度
+                    "dl_info_data": server_state.get("dl_info_data", 0),    # 总下载量
+                    "up_info_data": server_state.get("up_info_data", 0),    # 总上传量
+                    "dl_rate_limit": server_state.get("dl_rate_limit", 0),  # 下载限速
+                    "up_rate_limit": server_state.get("up_rate_limit", 0),  # 上传限速
+                    "queueing": server_state.get("queueing", False),        # 是否启用队列
+                }
+                
+                # 磁盘空间信息
+                if "free_space_on_disk" in server_state:
+                    stats["free_space_bytes"] = server_state["free_space_on_disk"]
+                    stats["free_space_gb"] = round(server_state["free_space_on_disk"] / (1024 ** 3), 2)
+                
+                return stats
+        
+        elif downloader.type == "transmission":
+            client = _get_tr_client(downloader)
+            session = client.get_session()
+            
+            stats = {
+                "version": getattr(session, 'version', 'unknown'),
+                "download_dir": getattr(session, 'download_dir', ''),
+                "speed_limit_down_enabled": getattr(session, 'speed_limit_down_enabled', False),
+                "speed_limit_up_enabled": getattr(session, 'speed_limit_up_enabled', False),
+                "speed_limit_down": getattr(session, 'speed_limit_down', 0),
+                "speed_limit_up": getattr(session, 'speed_limit_up', 0),
+            }
+            
+            # 获取统计信息
+            try:
+                session_stats = client.get_session_stats()
+                if session_stats:
+                    stats.update({
+                        "download_speed": getattr(session_stats, 'downloadSpeed', 0),
+                        "upload_speed": getattr(session_stats, 'uploadSpeed', 0),
+                        "total_downloaded": getattr(session_stats, 'cumulative_stats', {}).get('downloadedBytes', 0),
+                        "total_uploaded": getattr(session_stats, 'cumulative_stats', {}).get('uploadedBytes', 0),
+                    })
+            except:
+                pass
+            
+            return stats
+        
+        return None
+    
+    except Exception as e:
+        print(f"[Downloader] 获取服务器统计信息失败: {e}")
         return None
