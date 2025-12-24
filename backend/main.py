@@ -44,7 +44,10 @@ from routers import dashboard
 app.include_router(dashboard.router)
 
 # 前端静态文件目录
-FRONTEND_DIR = (Path(__file__).resolve().parent.parent / "frontend" / "dist")
+# 优先检查 Docker 环境路径，然后是开发环境路径
+_docker_frontend = Path("/app/frontend/dist")
+_dev_frontend = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+FRONTEND_DIR = _docker_frontend if _docker_frontend.exists() else _dev_frontend
 
 @app.on_event("startup")
 async def startup():
