@@ -6,9 +6,10 @@ M-Team PT 站自动化助手，支持自动下载免费种子、管理多账号�
 
 - **多账号管理**：通过 API Token 认证管理多个 M-Team 账号
 - **自动下载规则**：根据条件（免费/2x上传、大小、做种数、关键词等）自动下载种子
+- **智能跳过**：自动跳过 M-Team 网站上已有下载记录的种子，避免重复下载
 - **支持的下载器**：qBittorrent 和 Transmission，支持同时管理多个下载器
 - **智能删种**：自动删除促销过期或非免费的下载中种子，保护分享率
-- **下载队列限制**：可设置最大同时下载数，超过则暂停添加
+- **下载队列限制**：可设置最大同时下载数，精确控制不会超限
 - **标签管理**：下载时自动添加标签，便于分类管理
 - **种子上传**：手动上传种子文件，自动查询促销信息
 - **下载历史管理**：
@@ -19,15 +20,82 @@ M-Team PT 站自动化助手，支持自动下载免费种子、管理多账号�
 
 ## 系统要求
 
-- Python 3.10+
-- Node.js 18+
+- Python 3.10+（本地部署）
+- Node.js 18+（本地部署）
+- Docker（Docker 部署）
 - qBittorrent 或 Transmission
-
-> ⚠️ **注意**：本项目在 Windows 环境下测试通过。
 
 ## 快速部署
 
-### 方式一：Linux 一键部署（推荐）
+### 方式一：Docker 部署（推荐）
+
+最简单的部署方式，无需安装 Python 和 Node.js。
+
+**Docker Hub 地址**：https://hub.docker.com/r/spellyaohui/mteam-helper
+
+#### 使用 docker-compose（推荐）
+
+创建 `docker-compose.yml` 文件：
+
+```yaml
+version: '3.8'
+services:
+  mteam-helper:
+    image: spellyaohui/mteam-helper:latest
+    container_name: mteam-helper
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - TZ=Asia/Shanghai
+    restart: unless-stopped
+```
+
+启动服务：
+
+```bash
+docker-compose up -d
+```
+
+#### 使用 docker run
+
+```bash
+docker run -d \
+  --name mteam-helper \
+  -p 8001:8001 \
+  -v $(pwd)/data:/app/data \
+  -e TZ=Asia/Shanghai \
+  --restart unless-stopped \
+  spellyaohui/mteam-helper:latest
+```
+
+**部署完成后：**
+- 访问地址：`http://服务器IP:8001`
+- API 文档：`http://服务器IP:8001/docs`
+
+**常用命令：**
+```bash
+# 查看日志
+docker logs -f mteam-helper
+
+# 重启服务
+docker restart mteam-helper
+
+# 更新版本
+docker pull spellyaohui/mteam-helper:latest
+docker-compose down
+docker-compose up -d
+
+# 停止并删除
+docker-compose down
+```
+
+**数据持久化：**
+- 数据库文件：`./data/mteam.db`
+- 种子文件：`./data/torrents/`
+
+### 方式二：Linux 一键部署
 
 支持 Ubuntu/Debian、CentOS/RHEL、Fedora 等主流 Linux 发行版。
 
@@ -75,7 +143,7 @@ sudo bash /opt/mteam-helper/deploy.sh update
 sudo bash /opt/mteam-helper/deploy.sh uninstall
 ```
 
-### 方式二：Windows 本地部署
+### 方式三：Windows 本地部署
 
 ```bash
 # 克隆项目
@@ -99,7 +167,7 @@ python main.py
 
 访问 `http://localhost:8001` 即可使用。
 
-### 方式三：Ubuntu/宝塔面板部署
+### 方式四：Ubuntu/宝塔面板部署
 
 #### 1. 安装依赖
 
@@ -227,7 +295,7 @@ sudo ufw allow 80
 sudo ufw allow 443
 ```
 
-### 方式四：开发模式
+### 方式五：开发模式
 
 ```bash
 # 终端 1：后端
@@ -332,6 +400,7 @@ mteam-helper/
 2. 检查用户名和密码
 3. 如果使用 HTTPS，开启「使用 HTTPS」开关
 4. 确保下载器已开启 Web UI
+5. Docker 部署时，下载器地址不能用 `localhost`，需要用宿主机 IP 或 `host.docker.internal`
 
 ### Q: 种子没有自动下载？
 1. 检查规则是否已启用
@@ -345,7 +414,14 @@ mteam-helper/
 ### Q: 为什么种子被自动删除了？
 系统会删除下载中且非免费的种子。如果种子是50%促销或无优惠，会被自动删除以保护分享率。
 
-### Q: 如何更新前端代码？
+### Q: 如何更新 Docker 版本？
+```bash
+docker pull spellyaohui/mteam-helper:latest
+docker-compose down
+docker-compose up -d
+```
+
+### Q: 如何更新本地部署版本？
 ```bash
 cd mteam-helper/frontend
 npm run build
