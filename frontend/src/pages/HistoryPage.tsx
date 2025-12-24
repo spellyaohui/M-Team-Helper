@@ -60,6 +60,7 @@ export default function HistoryPage() {
   const [accountId, setAccountId] = useState<number | undefined>();
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [clearingDeleted, setClearingDeleted] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadModalVisible, setUploadModalVisible] = useState(false);
   const [availableTags, setAvailableTags] = useState<string[]>([]);
@@ -86,10 +87,15 @@ export default function HistoryPage() {
 
   useEffect(() => { fetchHistory(); }, []);
 
-  // 自动刷新：每30秒刷新一次历史记录
+  // 自动刷新：每30秒同步状态（不导入新种子）
   useEffect(() => {
-    const interval = setInterval(() => {
-      fetchHistory(page, accountId);
+    const interval = setInterval(async () => {
+      try {
+        await historyApi.syncStatus(false);  // 自动同步不导入新种子
+        fetchHistory(page, accountId);
+      } catch (e) {
+        console.error('自动同步状态失败:', e);
+      }
     }, 30000);
     
     return () => clearInterval(interval);
@@ -115,19 +121,37 @@ export default function HistoryPage() {
     }
   };
 
+  const handleClearDeleted = async () => {
+    setClearingDeleted(true);
+    try {
+      const response = await historyApi.clearDeleted();
+      if (response.data.success) {
+        message.success(response.data.message);
+        fetchHistory();
+      } else {
+        message.error('清空失败');
+      }
+    } catch (e) {
+      message.error('清空失败');
+    } finally {
+      setClearingDeleted(false);
+    }
+  };
+
   const handleSyncStatus = async () => {
     setSyncing(true);
     try {
-      const response = await historyApi.syncStatus();
+      // 手动点击时先导入新种子再同步状态
+      const response = await historyApi.syncStatus(true);
       
       if (response.data.success) {
-        message.success(`状态同步完成，更新了 ${response.data.updated_count} 条记录`);
+        message.success(response.data.message);
         fetchHistory(); // 刷新列表
       } else {
-        message.error('状态同步失败');
+        message.error('同步失败');
       }
     } catch (e) {
-      message.error('状态同步失败');
+      message.error('同步失败');
     } finally {
       setSyncing(false);
     }
@@ -296,7 +320,7 @@ export default function HistoryPage() {
         />
         
         <Space>
-          <Tooltip title="与下载器同步种子状态">
+          <Tooltip title="从下载器导入新种子并同步状态">
             <Button 
               icon={<SyncOutlined />} 
               loading={syncing}
@@ -314,6 +338,17 @@ export default function HistoryPage() {
               上传种子
             </Button>
           </Tooltip>
+          
+          <Popconfirm title="确定清空已删除的记录？" onConfirm={handleClearDeleted}>
+            <Tooltip title="清空下载器中已删除的种子记录">
+              <Button 
+                icon={<ClearOutlined />}
+                loading={clearingDeleted}
+              >
+                清空已删除
+              </Button>
+            </Tooltip>
+          </Popconfirm>
           
           <Popconfirm title="确定清空所有记录？" onConfirm={handleClear}>
             <Button danger icon={<ClearOutlined />}>清空历史</Button>

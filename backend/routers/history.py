@@ -331,9 +331,84 @@ async def get_downloader_tags(downloader_id: int, db: Session = Depends(get_db))
 
 
 @router.post("/sync-status")
-async def sync_download_status(db: Session = Depends(get_db)):
-    """同步所有下载历史的状态"""
-    # 获取所有有 info_hash 的记录
+async def sync_download_status(
+    import_first: bool = Query(False, description="是否先从下载器导入新种子"),
+    db: Session = Depends(get_db)
+):
+    """同步所有下载历史的状态
+    
+    Args:
+        import_first: 如果为 True，先从下载器导入新种子再同步状态
+    """
+    from services.downloader import get_all_torrents_with_details
+    
+    imported_count = 0
+    
+    # 如果需要先导入种子
+    if import_first:
+        downloaders = db.query(Downloader).filter(Downloader.is_active == True).all()
+        
+        # 获取数据库中已有的 info_hash
+        existing_hashes = set(
+            h[0].lower() for h in db.query(DownloadHistory.info_hash).filter(
+                DownloadHistory.info_hash != None
+            ).all()
+        )
+        
+        for downloader in downloaders:
+            try:
+                torrents = await get_all_torrents_with_details(downloader)
+                print(f"[Import] 下载器 {downloader.name} 中有 {len(torrents)} 个种子")
+                
+                for torrent in torrents:
+                    info_hash = torrent.get("hash", "").lower()
+                    
+                    if info_hash in existing_hashes:
+                        continue
+                    
+                    # 根据种子状态确定记录状态
+                    progress = torrent.get("progress", 0)
+                    state = torrent.get("state", "")
+                    
+                    if progress >= 100:
+                        if state in ["uploading", "stalledUP", "queuedUP", "seeding", "seed_wait"]:
+                            status = "seeding"
+                        else:
+                            status = "completed"
+                    elif state in ["pausedDL", "pausedUP"]:
+                        status = "paused"
+                    elif state in ["queuedDL", "allocating"]:
+                        status = "queued"
+                    else:
+                        status = "downloading"
+                    
+                    history_record = DownloadHistory(
+                        account_id=None,
+                        torrent_id=f"import_{info_hash[:8]}",
+                        torrent_name=torrent.get("name", "未知"),
+                        torrent_size=float(torrent.get("size", 0)),
+                        rule_id=None,
+                        downloader_id=downloader.id,
+                        status=status,
+                        info_hash=info_hash,
+                        discount_type=None,
+                        discount_end_time=None,
+                        created_at=beijing_now()
+                    )
+                    
+                    db.add(history_record)
+                    existing_hashes.add(info_hash)
+                    imported_count += 1
+                    
+            except Exception as e:
+                print(f"[Import] 从下载器 {downloader.name} 导入失败: {e}")
+                continue
+        
+        if imported_count > 0:
+            db.commit()
+            print(f"[Import] 导入完成，新增 {imported_count} 条记录")
+    
+    # 同步状态
     records = db.query(DownloadHistory).filter(
         DownloadHistory.info_hash != None,
         DownloadHistory.downloader_id != None,
@@ -351,37 +426,32 @@ async def sync_download_status(db: Session = Depends(get_db)):
             torrent_info = await get_torrent_info_with_tags(downloader, record.info_hash)
             
             if torrent_info is None:
-                # 种子不存在，可能已被删除
                 if record.status != "deleted":
                     record.status = "deleted"
                     updated_count += 1
             else:
-                # 根据种子状态更新记录状态
                 progress = torrent_info.get("progress", 0)
                 qb_state = torrent_info.get("state", "")
                 
                 new_status = None
                 
                 if progress >= 100 or torrent_info.get("is_completed", False):
-                    # 已完成
                     if qb_state in ["uploading", "stalledUP", "queuedUP"]:
-                        new_status = "seeding"  # 做种中
+                        new_status = "seeding"
                     else:
-                        new_status = "completed"  # 已完成
+                        new_status = "completed"
                 elif progress > 0:
-                    # 下载中
                     if qb_state in ["downloading", "stalledDL", "queuedDL", "metaDL"]:
-                        new_status = "downloading"  # 下载中
+                        new_status = "downloading"
                     elif qb_state == "pausedDL":
-                        new_status = "paused"  # 已暂停
+                        new_status = "paused"
                     else:
                         new_status = "downloading"
                 else:
-                    # 未开始或其他状态
                     if qb_state == "pausedDL":
-                        new_status = "paused"  # 已暂停
+                        new_status = "paused"
                     elif qb_state in ["queuedDL", "allocating"]:
-                        new_status = "queued"  # 队列中
+                        new_status = "queued"
                     else:
                         new_status = "downloading"
                 
@@ -395,11 +465,117 @@ async def sync_download_status(db: Session = Depends(get_db)):
     
     db.commit()
     
+    message = f"状态同步完成，更新了 {updated_count} 条记录"
+    if import_first and imported_count > 0:
+        message = f"导入 {imported_count} 条新记录，更新了 {updated_count} 条状态"
+    
     return {
         "success": True,
-        "message": f"状态同步完成，更新了 {updated_count} 条记录",
+        "message": message,
+        "imported_count": imported_count,
         "updated_count": updated_count,
         "total_checked": len(records)
+    }
+
+
+@router.post("/import-from-downloader")
+async def import_from_downloader(
+    downloader_id: Optional[int] = None,
+    db: Session = Depends(get_db)
+):
+    """从下载器导入种子到下载历史
+    
+    如果指定 downloader_id，只导入该下载器的种子；否则导入所有下载器的种子。
+    只导入数据库中不存在的种子（根据 info_hash 判断）。
+    """
+    from services.downloader import get_all_torrents_with_details
+    
+    # 获取要导入的下载器列表
+    if downloader_id:
+        downloaders = db.query(Downloader).filter(
+            Downloader.id == downloader_id,
+            Downloader.is_active == True
+        ).all()
+    else:
+        downloaders = db.query(Downloader).filter(Downloader.is_active == True).all()
+    
+    if not downloaders:
+        return {
+            "success": False,
+            "message": "没有找到可用的下载器",
+            "imported_count": 0
+        }
+    
+    # 获取数据库中已有的 info_hash
+    existing_hashes = set(
+        h[0].lower() for h in db.query(DownloadHistory.info_hash).filter(
+            DownloadHistory.info_hash != None
+        ).all()
+    )
+    
+    imported_count = 0
+    error_count = 0
+    
+    for downloader in downloaders:
+        try:
+            # 获取下载器中的所有种子
+            torrents = await get_all_torrents_with_details(downloader)
+            print(f"[Import] 下载器 {downloader.name} 中有 {len(torrents)} 个种子")
+            
+            for torrent in torrents:
+                info_hash = torrent.get("hash", "").lower()
+                
+                # 跳过已存在的种子
+                if info_hash in existing_hashes:
+                    continue
+                
+                # 根据种子状态确定记录状态
+                progress = torrent.get("progress", 0)
+                state = torrent.get("state", "")
+                
+                if progress >= 100:
+                    if state in ["uploading", "stalledUP", "queuedUP", "seeding", "seed_wait"]:
+                        status = "seeding"
+                    else:
+                        status = "completed"
+                elif state in ["pausedDL", "pausedUP"]:
+                    status = "paused"
+                elif state in ["queuedDL", "allocating"]:
+                    status = "queued"
+                else:
+                    status = "downloading"
+                
+                # 创建下载历史记录
+                history_record = DownloadHistory(
+                    account_id=None,  # 导入的种子没有关联账号
+                    torrent_id=f"import_{info_hash[:8]}",
+                    torrent_name=torrent.get("name", "未知"),
+                    torrent_size=float(torrent.get("size", 0)),
+                    rule_id=None,
+                    downloader_id=downloader.id,
+                    status=status,
+                    info_hash=info_hash,
+                    discount_type=None,
+                    discount_end_time=None,
+                    created_at=beijing_now()
+                )
+                
+                db.add(history_record)
+                existing_hashes.add(info_hash)  # 防止重复导入
+                imported_count += 1
+                
+        except Exception as e:
+            print(f"[Import] 从下载器 {downloader.name} 导入失败: {e}")
+            error_count += 1
+            continue
+    
+    db.commit()
+    
+    return {
+        "success": True,
+        "message": f"导入完成，新增 {imported_count} 条记录" + (f"，{error_count} 个下载器导入失败" if error_count > 0 else ""),
+        "imported_count": imported_count,
+        "error_count": error_count
     }
 
 
@@ -435,27 +611,97 @@ async def get_status_mapping():
         }
     }
 
+@router.delete("/deleted")
+async def clear_deleted_history(db: Session = Depends(get_db)):
+    """清空已删除状态的历史记录（下载器中已不存在的种子）"""
+    # 查询所有已删除状态的记录
+    records = db.query(DownloadHistory).filter(
+        DownloadHistory.status == "deleted"
+    ).all()
+    
+    count = len(records)
+    for record in records:
+        db.delete(record)
+    db.commit()
+    
+    return {
+        "success": True,
+        "message": f"已清空 {count} 条已删除记录",
+        "deleted_count": count
+    }
+
+
 @router.delete("/{history_id}")
 async def delete_history(history_id: int, db: Session = Depends(get_db)):
-    """删除下载历史记录"""
+    """删除下载历史记录，同时删除下载器中的种子"""
+    from services.downloader import delete_torrent
+    
     history = db.query(DownloadHistory).filter(DownloadHistory.id == history_id).first()
     if not history:
         raise HTTPException(status_code=404, detail="记录不存在")
     
+    # 如果有关联的下载器和 info_hash，尝试删除下载器中的种子
+    torrent_deleted = False
+    if history.info_hash and history.downloader_id:
+        downloader = db.query(Downloader).filter(Downloader.id == history.downloader_id).first()
+        if downloader:
+            try:
+                torrent_deleted = await delete_torrent(downloader, history.info_hash, delete_files=True)
+                if torrent_deleted:
+                    print(f"[History] 已从下载器删除种子: {history.torrent_name}")
+            except Exception as e:
+                # 下载器中种子可能已被删除，忽略错误
+                print(f"[History] 删除下载器种子时出错（可能已不存在）: {e}")
+    
+    # 无论下载器删除是否成功，都删除数据库记录
     db.delete(history)
     db.commit()
-    return {"success": True, "message": "删除成功"}
+    
+    message = "删除成功"
+    if history.info_hash and history.downloader_id:
+        message = "删除成功，种子已从下载器移除" if torrent_deleted else "删除成功，种子在下载器中不存在"
+    
+    return {"success": True, "message": message, "torrent_deleted": torrent_deleted}
 
 @router.delete("/")
 async def clear_history(
     account_id: Optional[int] = None,
     db: Session = Depends(get_db)
 ):
-    """清空下载历史"""
+    """清空下载历史，同时删除下载器中的种子"""
+    from services.downloader import delete_torrent
+    
     query = db.query(DownloadHistory)
     if account_id:
         query = query.filter(DownloadHistory.account_id == account_id)
     
-    count = query.delete()
+    # 获取所有要删除的记录
+    records = query.all()
+    
+    # 先尝试删除下载器中的种子
+    torrent_deleted_count = 0
+    for record in records:
+        if record.info_hash and record.downloader_id:
+            downloader = db.query(Downloader).filter(Downloader.id == record.downloader_id).first()
+            if downloader:
+                try:
+                    deleted = await delete_torrent(downloader, record.info_hash, delete_files=True)
+                    if deleted:
+                        torrent_deleted_count += 1
+                        print(f"[History] 已从下载器删除种子: {record.torrent_name}")
+                except Exception as e:
+                    # 下载器中种子可能已被删除，忽略错误
+                    print(f"[History] 删除下载器种子时出错（可能已不存在）: {e}")
+    
+    # 删除数据库记录
+    count = len(records)
+    for record in records:
+        db.delete(record)
     db.commit()
-    return {"success": True, "message": f"已删除 {count} 条记录"}
+    
+    return {
+        "success": True, 
+        "message": f"已删除 {count} 条记录，{torrent_deleted_count} 个种子已从下载器移除",
+        "deleted_count": count,
+        "torrent_deleted_count": torrent_deleted_count
+    }

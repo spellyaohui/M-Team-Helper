@@ -114,7 +114,9 @@ export const historyApi = {
     api.get('/history/', { params }),
   delete: (id: number) => api.delete(`/history/${id}`),
   clear: (accountId?: number) => api.delete('/history/', { params: { account_id: accountId } }),
-  syncStatus: () => api.post('/history/sync-status'),
+  clearDeleted: () => api.delete('/history/deleted'),
+  syncStatus: (importFirst: boolean = false) => 
+    api.post('/history/sync-status', null, { params: { import_first: importFirst } }),
   getStatusMapping: () => api.get('/history/status-mapping'),
   uploadTorrent: (formData: FormData) => api.post('/history/upload-torrent', formData, {
     headers: { 'Content-Type': 'multipart/form-data' }

@@ -19,7 +19,7 @@ M-Team PT 站自动化助手，支持自动下载免费种子、管理多账号�
 - Node.js 18+
 - qBittorrent 或 Transmission
 
-> ⚠️ **注意**：本项目在 Windows 和 Ubuntu/宝塔 环境下测试通过。
+> ⚠️ **注意**：本项目在 Windows 环境下测试通过。
 
 ## 快速部署
 
