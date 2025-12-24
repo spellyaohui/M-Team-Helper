@@ -23,7 +23,55 @@ M-Team PT 站自动化助手，支持自动下载免费种子、管理多账号�
 
 ## 快速部署
 
-### 方式一：Windows 本地部署
+### 方式一：Linux 一键部署（推荐）
+
+支持 Ubuntu/Debian、CentOS/RHEL、Fedora 等主流 Linux 发行版。
+
+```bash
+# 下载并执行一键部署脚本
+curl -fsSL https://raw.githubusercontent.com/spellyaohui/M-Team-Helper/main/deploy.sh -o deploy.sh
+chmod +x deploy.sh
+sudo bash deploy.sh
+```
+
+或者直接执行：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/spellyaohui/M-Team-Helper/main/deploy.sh | sudo bash
+```
+
+**脚本功能：**
+- ✅ 自动检测系统类型
+- ✅ 自动安装 Python 3.10+ 和 Node.js 20+
+- ✅ 自动克隆项目代码
+- ✅ 自动配置后端和前端
+- ✅ 自动创建 systemd 服务
+- ✅ 自动配置开机自启
+- ✅ 自动配置防火墙
+
+**部署完成后：**
+- 访问地址：`http://服务器IP:8001`
+- API 文档：`http://服务器IP:8001/docs`
+
+**常用命令：**
+```bash
+# 查看服务状态
+systemctl status mteam-helper
+
+# 查看日志
+journalctl -u mteam-helper -f
+
+# 重启服务
+systemctl restart mteam-helper
+
+# 更新版本
+sudo bash /opt/mteam-helper/deploy.sh update
+
+# 卸载
+sudo bash /opt/mteam-helper/deploy.sh uninstall
+```
+
+### 方式二：Windows 本地部署
 
 ```bash
 # 克隆项目
@@ -47,7 +95,7 @@ python main.py
 
 访问 `http://localhost:8001` 即可使用。
 
-### 方式二：Ubuntu/宝塔面板部署
+### 方式三：Ubuntu/宝塔面板部署
 
 #### 1. 安装依赖
 
@@ -175,7 +223,7 @@ sudo ufw allow 80
 sudo ufw allow 443
 ```
 
-### 方式三：开发模式
+### 方式四：开发模式
 
 ```bash
 # 终端 1：后端
