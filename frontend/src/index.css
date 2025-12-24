@@ -6,10 +6,22 @@
 
 html, body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', sans-serif;
-  background: #0a0a0a;
-  color: #ffffff;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* 亮色模式默认值 */
+body {
+  background: #f3f4f6;
+  color: #1f2937;
+}
+
+/* 暗色模式适配 */
+@media (prefers-color-scheme: dark) {
+  body {
+    background: #0a0a0a;
+    color: #ffffff;
+  }
 }
 
 #root {
@@ -23,20 +35,34 @@ html, body {
 }
 
 ::-webkit-scrollbar-track {
-  background: #1f1f1f;
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #404040;
+  background: rgba(0, 0, 0, 0.2);
   border-radius: 4px;
 }
 
+@media (prefers-color-scheme: dark) {
+  ::-webkit-scrollbar-track {
+    background: #1f1f1f;
+  }
+  
+  ::-webkit-scrollbar-thumb {
+    background: #404040;
+  }
+  
+  ::-webkit-scrollbar-thumb:hover {
+    background: #555555;
+  }
+}
+
 ::-webkit-scrollbar-thumb:hover {
-  background: #555555;
+  background: rgba(0, 0, 0, 0.3);
 }
 
 /* 选中文本颜色 */
 ::selection {
-  background: rgba(22, 104, 220, 0.4);
-  color: #ffffff;
+  background: rgba(59, 130, 246, 0.4); /* Tailwind Blue 500 with opacity */
+  color: inherit;
 }

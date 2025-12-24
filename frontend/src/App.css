@@ -1,73 +1,159 @@
-/* 全局样式 - 支持浅色和深色主题 */
-:root {
-  --primary-color: #1668dc;
-}
+@import 'antd/dist/reset.css';
 
-/* 深色主题变量 */
-:root {
-  --bg-dark: #0a0a0a;
-  --bg-card: #141414;
-  --bg-sider: #0d0d0d;
-  --border-color: #303030;
-  --text-primary: #ffffff;
-  --text-secondary: #8c8c8c;
-}
-
-/* 浅色主题变量 - 通过媒体查询自动应用 */
-@media (prefers-color-scheme: light) {
-  :root {
-    --bg-dark: #f5f5f5;
-    --bg-card: #ffffff;
-    --bg-sider: #ffffff;
-    --border-color: #d9d9d9;
-    --text-primary: #000000;
-    --text-secondary: #666666;
-  }
-}
-
-/* 加载页面 */
-.loading-container {
+.app-layout {
   min-height: 100vh;
+}
+
+.logo {
+  height: 64px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--bg-dark);
+  overflow: hidden;
+  transition: all 0.2s;
 }
 
-/* 登录页面 */
+.logo-text {
+  margin-left: 8px;
+  font-weight: 600;
+  font-size: 16px;
+  white-space: nowrap;
+  animation: fadeIn 0.3s ease-in;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.trigger {
+  padding: 0 24px;
+  font-size: 18px;
+  line-height: 64px;
+  cursor: pointer;
+  transition: color 0.3s;
+}
+
+.trigger:hover {
+  color: #1890ff;
+}
+
+/* 现代化卡片样式 */
+.modern-card {
+  border: none !important;
+  transition: all 0.3s ease;
+  overflow: hidden;
+}
+
+.modern-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05) !important;
+}
+
+/* 统计卡片图标容器 */
+.stat-icon-wrapper {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  margin-bottom: 16px;
+}
+
+/* 表格样式优化 */
+.ant-table-wrapper .ant-table-container {
+  border-radius: 8px;
+}
+
+.ant-table-thead > tr > th {
+  background: transparent !important;
+  font-weight: 600;
+  border-bottom: 1px solid rgba(0,0,0,0.06) !important;
+}
+
+[data-theme='dark'] .ant-table-thead > tr > th {
+  border-bottom: 1px solid rgba(255,255,255,0.1) !important;
+}
+
+/* 滚动条样式 (更细致) */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 3px;
+}
+
+[data-theme='dark'] ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+/* 登录页面样式 */
 .login-container {
-  min-height: 100vh;
+  height: 100vh;
+  width: 100vw;
   display: flex;
-  align-items: center;
   justify-content: center;
-  background: var(--bg-dark);
+  align-items: center;
+  background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 50%, #60a5fa 100%);
   position: relative;
   overflow: hidden;
 }
 
-.login-bg {
+.login-bg-shape-1 {
   position: absolute;
-  inset: 0;
-  background: 
-    radial-gradient(ellipse at 20% 20%, rgba(22, 104, 220, 0.15) 0%, transparent 50%),
-    radial-gradient(ellipse at 80% 80%, rgba(22, 104, 220, 0.1) 0%, transparent 50%);
+  top: -100px;
+  left: -100px;
+  width: 500px;
+  height: 500px;
+  background: #3b82f6;
+  border-radius: 50%;
+  filter: blur(100px);
+  opacity: 0.5;
+  animation: float 20s infinite alternate;
+}
+
+.login-bg-shape-2 {
+  position: absolute;
+  bottom: -100px;
+  right: -100px;
+  width: 400px;
+  height: 400px;
+  background: #8b5cf6;
+  border-radius: 50%;
+  filter: blur(100px);
+  opacity: 0.5;
+  animation: float-reverse 15s infinite alternate;
 }
 
 .login-card {
-  width: 400px;
-  background: var(--bg-card) !important;
-  backdrop-filter: blur(20px);
-  border: 1px solid var(--border-color) !important;
+  width: 420px;
+  background: rgba(255, 255, 255, 0.85) !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.15);
+  z-index: 10;
   border-radius: 16px !important;
-  padding: 20px;
-  z-index: 1;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  padding: 24px;
 }
 
-@media (prefers-color-scheme: dark) {
-  .login-card {
-    background: rgba(20, 20, 20, 0.9) !important;
-  }
+[data-theme='dark'] .login-card {
+  background: rgba(30, 30, 30, 0.7) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
 }
 
 .login-header {
@@ -75,308 +161,43 @@
   margin-bottom: 32px;
 }
 
-.login-logo {
-  font-size: 48px;
-  color: var(--primary-color);
-  margin-bottom: 16px;
-}
-
-.login-title {
-  margin: 0 0 8px 0 !important;
-  color: var(--text-primary) !important;
-}
-
-.login-form {
-  margin-top: 24px;
-}
-
-.login-form .ant-input-affix-wrapper {
-  background: rgba(255, 255, 255, 0.05) !important;
-  border-color: var(--border-color) !important;
-  border-radius: 8px !important;
-  padding: 12px 16px;
-}
-
-@media (prefers-color-scheme: light) {
-  .login-form .ant-input-affix-wrapper {
-    background: rgba(0, 0, 0, 0.02) !important;
-  }
-}
-
-.login-form .ant-input-affix-wrapper:hover,
-.login-form .ant-input-affix-wrapper:focus {
-  border-color: var(--primary-color) !important;
-}
-
-.login-btn {
-  height: 48px !important;
-  border-radius: 8px !important;
-  font-size: 16px !important;
-  font-weight: 500 !important;
-  background: linear-gradient(135deg, #1668dc 0%, #1890ff 100%) !important;
-  border: none !important;
-}
-
-.login-btn:hover {
-  background: linear-gradient(135deg, #1890ff 0%, #40a9ff 100%) !important;
-}
-
-.login-hint {
-  display: block;
-  text-align: center;
-  margin-top: 16px;
-}
-
-/* 主布局 */
-.app-layout {
-  min-height: 100vh;
-  background: var(--bg-dark);
-}
-
-.app-sider {
-  background: var(--bg-sider) !important;
-  border-right: 1px solid var(--border-color);
-}
-
-.app-sider .ant-layout-sider-trigger {
-  background: var(--bg-sider) !important;
-  border-top: 1px solid var(--border-color);
-}
-
-/* Logo */
-.logo {
+.login-logo-wrapper {
+  width: 64px;
   height: 64px;
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  border-radius: 16px;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  padding: 0 16px;
-  border-bottom: 1px solid var(--border-color);
-  background: linear-gradient(180deg, rgba(22, 104, 220, 0.1) 0%, transparent 100%);
+  margin: 0 auto 16px;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
 }
 
-.logo-icon {
-  font-size: 28px;
+.login-logo {
+  font-size: 32px;
+  color: white;
 }
 
-.logo-text {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--text-primary);
-  white-space: nowrap;
+.login-title {
+  font-size: 24px !important;
+  font-weight: 700 !important;
+  margin-bottom: 8px !important;
+  background: linear-gradient(135deg, #1e3a8a, #3b82f6);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
-/* 菜单 */
-.app-menu {
-  background: transparent !important;
-  border: none !important;
-  padding: 12px 8px;
+[data-theme='dark'] .login-title {
+  background: linear-gradient(135deg, #60a5fa, #93c5fd);
+  -webkit-background-clip: text;
 }
 
-.app-menu .ant-menu-item {
-  border-radius: 8px !important;
-  margin: 4px 0 !important;
-  height: 44px !important;
-  line-height: 44px !important;
+@keyframes float {
+  0% { transform: translate(0, 0) rotate(0deg); }
+  100% { transform: translate(50px, 50px) rotate(20deg); }
 }
 
-.app-menu .ant-menu-item-selected {
-  background: linear-gradient(90deg, rgba(22, 104, 220, 0.3) 0%, rgba(22, 104, 220, 0.1) 100%) !important;
-}
-
-.app-menu .ant-menu-item:hover:not(.ant-menu-item-selected) {
-  background: rgba(255, 255, 255, 0.05) !important;
-}
-
-@media (prefers-color-scheme: light) {
-  .app-menu .ant-menu-item:hover:not(.ant-menu-item-selected) {
-    background: rgba(0, 0, 0, 0.04) !important;
-  }
-}
-
-/* 头部 */
-.app-header {
-  padding: 0 24px !important;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: 64px;
-}
-
-.header-title {
-  font-size: 18px;
-  font-weight: 600;
-}
-
-.header-user {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  cursor: pointer;
-  padding: 8px 12px;
-  border-radius: 8px;
-  transition: background 0.2s;
-}
-
-.header-user:hover {
-  background: rgba(255, 255, 255, 0.05);
-}
-
-@media (prefers-color-scheme: light) {
-  .header-user:hover {
-    background: rgba(0, 0, 0, 0.04);
-  }
-}
-
-.user-avatar {
-  background: var(--primary-color) !important;
-}
-
-.user-name {
-  font-weight: 500;
-}
-
-/* 内容区 */
-.app-content {
-  margin: 0;
-  padding: 24px;
-  overflow: auto;
-}
-
-.content-wrapper {
-  background: var(--bg-card);
-  border-radius: 12px;
-  border: 1px solid var(--border-color);
-  padding: 24px;
-  min-height: calc(100vh - 112px);
-}
-
-/* 表格美化 */
-.ant-table {
-  background: transparent !important;
-}
-
-.ant-table-thead > tr > th {
-  background: rgba(255, 255, 255, 0.02) !important;
-  border-bottom: 1px solid var(--border-color) !important;
-  font-weight: 600;
-}
-
-@media (prefers-color-scheme: light) {
-  .ant-table-thead > tr > th {
-    background: rgba(0, 0, 0, 0.02) !important;
-  }
-}
-
-.ant-table-tbody > tr > td {
-  border-bottom: 1px solid var(--border-color) !important;
-}
-
-.ant-table-tbody > tr:hover > td {
-  background: rgba(22, 104, 220, 0.05) !important;
-}
-
-/* 卡片美化 */
-.ant-card {
-  background: var(--bg-card) !important;
-  border-color: var(--border-color) !important;
-  border-radius: 12px !important;
-}
-
-/* 按钮美化 */
-.ant-btn-primary {
-  background: linear-gradient(135deg, #1668dc 0%, #1890ff 100%) !important;
-  border: none !important;
-  box-shadow: 0 2px 8px rgba(22, 104, 220, 0.3) !important;
-}
-
-.ant-btn-primary:hover {
-  background: linear-gradient(135deg, #1890ff 0%, #40a9ff 100%) !important;
-}
-
-/* 输入框美化 */
-.ant-input,
-.ant-input-affix-wrapper,
-.ant-select-selector,
-.ant-input-number {
-  background: rgba(255, 255, 255, 0.05) !important;
-  border-color: var(--border-color) !important;
-  border-radius: 6px !important;
-}
-
-@media (prefers-color-scheme: light) {
-  .ant-input,
-  .ant-input-affix-wrapper,
-  .ant-select-selector,
-  .ant-input-number {
-    background: rgba(0, 0, 0, 0.02) !important;
-  }
-}
-
-.ant-input:hover,
-.ant-input-affix-wrapper:hover,
-.ant-select-selector:hover,
-.ant-input-number:hover {
-  border-color: var(--primary-color) !important;
-}
-
-/* Modal 美化 */
-.ant-modal-content {
-  background: var(--bg-card) !important;
-  border: 1px solid var(--border-color) !important;
-  border-radius: 12px !important;
-}
-
-.ant-modal-header {
-  background: transparent !important;
-  border-bottom: 1px solid var(--border-color) !important;
-}
-
-/* Tag 美化 */
-.ant-tag {
-  border-radius: 4px !important;
-  border: none !important;
-}
-
-/* 分页美化 */
-.ant-pagination-item {
-  background: rgba(255, 255, 255, 0.05) !important;
-  border-color: var(--border-color) !important;
-  border-radius: 6px !important;
-}
-
-@media (prefers-color-scheme: light) {
-  .ant-pagination-item {
-    background: rgba(0, 0, 0, 0.02) !important;
-  }
-}
-
-.ant-pagination-item-active {
-  background: var(--primary-color) !important;
-  border-color: var(--primary-color) !important;
-}
-
-/* Switch 美化 */
-.ant-switch {
-  background: rgba(255, 255, 255, 0.2) !important;
-}
-
-@media (prefers-color-scheme: light) {
-  .ant-switch {
-    background: rgba(0, 0, 0, 0.15) !important;
-  }
-}
-
-.ant-switch-checked {
-  background: var(--primary-color) !important;
-}
-
-/* 表单美化 */
-.ant-form-item-label > label {
-  color: var(--text-secondary) !important;
-}
-
-/* 空状态 */
-.ant-empty-description {
-  color: var(--text-secondary) !important;
+@keyframes float-reverse {
+  0% { transform: translate(0, 0) rotate(0deg); }
+  100% { transform: translate(-50px, -50px) rotate(-20deg); }
 }

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ConfigProvider, Layout, Menu, theme, Avatar, Dropdown, Spin } from 'antd';
+import { ConfigProvider, Layout, Menu, Avatar, Dropdown, Spin, Button } from 'antd';
 import {
   UserOutlined,
   SearchOutlined,
@@ -10,6 +10,9 @@ import {
   SettingOutlined,
   DashboardOutlined,
   ControlOutlined,
+  MenuUnfoldOutlined,
+  MenuFoldOutlined,
+  BellOutlined
 } from '@ant-design/icons';
 import zhCN from 'antd/locale/zh_CN';
 import LoginPage from './pages/LoginPage';
@@ -20,8 +23,8 @@ import DownloaderPage from './pages/DownloaderPage';
 import HistoryPage from './pages/HistoryPage';
 import DashboardPage from './pages/DashboardPage';
 import SettingsPage from './pages/SettingsPage';
-// import TestSettingsPage from './pages/TestSettingsPage';
 import { authApi } from './api';
+import { lightTheme, darkTheme } from './theme';
 import './App.css';
 
 const { Header, Sider, Content } = Layout;
@@ -31,7 +34,6 @@ type PageKey = 'dashboard' | 'accounts' | 'torrents' | 'rules' | 'downloaders' |
 // 检测系统主题偏好
 const useSystemTheme = () => {
   const [isDark, setIsDark] = useState(() => {
-    // 初始化时检查系统主题
     if (typeof window !== 'undefined' && window.matchMedia) {
       return window.matchMedia('(prefers-color-scheme: dark)').matches;
     }
@@ -41,18 +43,13 @@ const useSystemTheme = () => {
   useEffect(() => {
     if (typeof window !== 'undefined' && window.matchMedia) {
       const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-      
-      // 设置初始值
       setIsDark(mediaQuery.matches);
       
-      // 监听主题变化
       const handleChange = (e: MediaQueryListEvent) => {
         setIsDark(e.matches);
       };
       
       mediaQuery.addEventListener('change', handleChange);
-      
-      // 清理监听器
       return () => mediaQuery.removeEventListener('change', handleChange);
     }
   }, []);
@@ -67,11 +64,10 @@ function App() {
   const [currentPage, setCurrentPage] = useState<PageKey>('dashboard');
   const [collapsed, setCollapsed] = useState(false);
   
-  // 使用系统主题
   const isDarkMode = useSystemTheme();
+  const currentTheme = isDarkMode ? darkTheme : lightTheme;
 
   useEffect(() => {
-    // 检查登录状态
     const token = localStorage.getItem('token');
     const savedUsername = localStorage.getItem('username');
     
@@ -134,30 +130,16 @@ function App() {
     }
   };
 
-  // 根据系统主题选择算法
-  const themeAlgorithm = isDarkMode ? theme.darkAlgorithm : theme.defaultAlgorithm;
-  
-  // 主题配置
-  const themeConfig = {
-    algorithm: themeAlgorithm,
-    token: {
-      colorPrimary: '#1668dc',
-      borderRadius: 8,
-      // 根据主题调整一些颜色
-      ...(isDarkMode ? {
-        colorBgContainer: '#141414',
-        colorBgElevated: '#1f1f1f',
-      } : {
-        colorBgContainer: '#ffffff',
-        colorBgElevated: '#ffffff',
-      })
-    },
-  };
-
   if (loading) {
     return (
-      <ConfigProvider locale={zhCN} theme={themeConfig}>
-        <div className="loading-container">
+      <ConfigProvider locale={zhCN} theme={currentTheme}>
+        <div className="loading-container" style={{ 
+          background: isDarkMode ? '#1f2937' : '#f3f4f6',
+          height: '100vh',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center'
+        }}>
           <Spin size="large" />
         </div>
       </ConfigProvider>
@@ -166,26 +148,56 @@ function App() {
 
   if (!isLoggedIn) {
     return (
-      <ConfigProvider locale={zhCN} theme={themeConfig}>
+      <ConfigProvider locale={zhCN} theme={currentTheme}>
         <LoginPage onLogin={handleLogin} />
       </ConfigProvider>
     );
   }
 
+  // 使用 Ant Design 的 useToken 获取当前主题的 token
+  // 注意：这里不能直接用 useToken，因为 App 组件本身在 ConfigProvider 外面
+  // 所以我们直接用 currentTheme.token 中的值，或者简单的硬编码一些依赖主题的值
+
+  const headerStyle = {
+    padding: '0 24px',
+    background: isDarkMode ? '#1f2937' : '#ffffff', // 使用主题色
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    boxShadow: isDarkMode ? '0 1px 2px rgba(255,255,255,0.05)' : '0 1px 2px rgba(0,0,0,0.03)',
+    zIndex: 10,
+    height: 64,
+  };
+
   return (
-    <ConfigProvider locale={zhCN} theme={themeConfig}>
-      <Layout className="app-layout">
+    <ConfigProvider locale={zhCN} theme={currentTheme}>
+      <Layout className="app-layout" style={{ minHeight: '100vh' }}>
         <Sider 
+          trigger={null}
           collapsible 
           collapsed={collapsed} 
-          onCollapse={setCollapsed}
           className="app-sider"
-          width={220}
+          width={240}
           theme={isDarkMode ? 'dark' : 'light'}
+          style={{
+            boxShadow: '2px 0 8px 0 rgba(29,35,41,.05)',
+            zIndex: 20
+          }}
         >
-          <div className="logo">
-            <span className="logo-icon">🚀</span>
-            {!collapsed && <span className="logo-text">M-Team Helper</span>}
+          <div className="logo" style={{ 
+            height: 64, 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center',
+            borderBottom: isDarkMode ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.06)',
+            margin: '0 16px 16px 16px'
+          }}>
+            <span className="logo-icon" style={{ fontSize: 24, marginRight: collapsed ? 0 : 8 }}>🚀</span>
+            {!collapsed && <span className="logo-text" style={{ 
+              fontSize: 18, 
+              fontWeight: 600,
+              color: isDarkMode ? '#fff' : '#1f2937'
+            }}>M-Team Helper</span>}
           </div>
           <Menu
             theme={isDarkMode ? 'dark' : 'light'}
@@ -194,33 +206,54 @@ function App() {
             items={menuItems}
             onClick={({ key }) => setCurrentPage(key as PageKey)}
             className="app-menu"
+            style={{ borderRight: 'none' }}
           />
         </Sider>
         <Layout>
-          <Header className="app-header" style={{
-            backgroundColor: isDarkMode ? '#001529' : '#ffffff',
-            borderBottom: isDarkMode ? '1px solid #303030' : '1px solid #f0f0f0'
-          }}>
-            <div className="header-title" style={{
-              color: isDarkMode ? '#ffffff' : '#000000'
-            }}>
-              {menuItems.find(m => m.key === currentPage)?.label}
+          <Header style={headerStyle}>
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <Button
+                type="text"
+                icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+                onClick={() => setCollapsed(!collapsed)}
+                style={{
+                  fontSize: '16px',
+                  width: 64,
+                  height: 64,
+                }}
+              />
+              <span style={{ fontSize: 18, fontWeight: 500, marginLeft: 16 }}>
+                {menuItems.find(m => m.key === currentPage)?.label}
+              </span>
             </div>
-            <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
-              <div className="header-user">
-                <Avatar icon={<UserOutlined />} className="user-avatar" />
-                <span className="user-name" style={{
-                  color: isDarkMode ? '#ffffff' : '#000000'
-                }}>{username}</span>
-              </div>
-            </Dropdown>
+            
+            <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
+              <Button type="text" icon={<BellOutlined />} style={{ fontSize: 18 }} />
+              <Dropdown menu={{ items: userMenuItems }} placement="bottomRight" arrow>
+                <div className="header-user" style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  cursor: 'pointer',
+                  padding: '4px 8px',
+                  borderRadius: 6,
+                  transition: 'all 0.3s'
+                }}>
+                  <Avatar 
+                    style={{ backgroundColor: '#3b82f6', marginRight: 8 }} 
+                    icon={<UserOutlined />} 
+                  />
+                  <span className="user-name" style={{ fontWeight: 500 }}>{username}</span>
+                </div>
+              </Dropdown>
+            </div>
           </Header>
           <Content className="app-content" style={{
-            backgroundColor: isDarkMode ? '#000000' : '#f5f5f5'
+            margin: '24px 24px',
+            minHeight: 280,
+            borderRadius: 12,
+            overflow: 'initial' // 防止内容被截断
           }}>
-            <div className="content-wrapper">
-              {renderPage()}
-            </div>
+            {renderPage()}
           </Content>
         </Layout>
       </Layout>

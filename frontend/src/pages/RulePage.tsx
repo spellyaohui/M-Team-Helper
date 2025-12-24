@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Table, Button, Modal, Form, Input, Switch, InputNumber, Select, message, Space, Tag, Popconfirm, Checkbox } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import { Table, Button, Modal, Form, Input, Switch, InputNumber, Select, message, Space, Tag, Popconfirm, Checkbox, Card, theme, Row, Col } from 'antd';
+import { PlusOutlined, EditOutlined, DeleteOutlined, FilterOutlined } from '@ant-design/icons';
 import { accountApi, ruleApi, downloaderApi, torrentApi } from '../api';
+
+const { useToken } = theme;
 
 interface Rule {
   id: number;
@@ -30,6 +32,7 @@ const modeOptions = [
 ];
 
 export default function RulePage() {
+  const { token } = useToken();
   const [rules, setRules] = useState<Rule[]>([]);
   const [accounts, setAccounts] = useState<any[]>([]);
   const [downloaders, setDownloaders] = useState<any[]>([]);
@@ -124,22 +127,16 @@ export default function RulePage() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      console.log('开始获取数据...');
       const [rulesRes, accountsRes, downloadersRes] = await Promise.all([
         ruleApi.list(),
         accountApi.list(),
         downloaderApi.list(),
       ]);
-      console.log('账号响应:', accountsRes);
-      console.log('规则响应:', rulesRes);
-      console.log('下载器响应:', downloadersRes);
       setRules(Array.isArray(rulesRes.data) ? rulesRes.data : []);
       setAccounts(Array.isArray(accountsRes.data) ? accountsRes.data : []);
       setDownloaders(Array.isArray(downloadersRes.data) ? downloadersRes.data : []);
     } catch (e: any) {
       message.error('获取数据失败');
-      console.error('获取数据失败:', e);
-      console.error('错误详情:', e.response?.status, e.response?.data);
     }
     setLoading(false);
   };
@@ -202,7 +199,14 @@ export default function RulePage() {
   };
 
   const columns = [
-    { title: '规则名称', dataIndex: 'name', key: 'name' },
+    { 
+      title: '规则名称', 
+      dataIndex: 'name', 
+      key: 'name',
+      render: (text: string) => (
+         <div style={{ fontWeight: 500 }}>{text}</div>
+      )
+    },
     { 
       title: '账号', 
       dataIndex: 'account_id', 
@@ -214,24 +218,24 @@ export default function RulePage() {
       dataIndex: 'is_enabled', 
       key: 'is_enabled',
       render: (v: boolean, r: Rule) => (
-        <Switch checked={v} onChange={() => handleToggle(r.id)} />
+        <Switch checked={v} onChange={() => handleToggle(r.id)} size="small" />
       )
     },
     { 
       title: '条件', 
       key: 'conditions',
       render: (_: any, r: Rule) => (
-        <Space wrap>
-          <Tag color={r.mode === 'adult' ? 'magenta' : 'default'}>{r.mode === 'adult' ? '成人' : '普通'}</Tag>
-          {r.free_only && <Tag color="green">免费</Tag>}
-          {r.double_upload && <Tag color="blue">2x上传</Tag>}
-          {r.min_size && <Tag>≥{r.min_size}GB</Tag>}
-          {r.max_size && <Tag>≤{r.max_size}GB</Tag>}
-          {r.keywords && <Tag>关键词: {r.keywords}</Tag>}
+        <Space wrap size={[4, 4]}>
+          <Tag color={r.mode === 'adult' ? 'magenta' : 'blue'} bordered={false}>{r.mode === 'adult' ? '成人' : '普通'}</Tag>
+          {r.free_only && <Tag color="green" bordered={false}>免费</Tag>}
+          {r.double_upload && <Tag color="cyan" bordered={false}>2x上传</Tag>}
+          {r.min_size && <Tag bordered={false}>≥{r.min_size}GB</Tag>}
+          {r.max_size && <Tag bordered={false}>≤{r.max_size}GB</Tag>}
+          {r.keywords && <Tag bordered={false} icon={<FilterOutlined />}>{r.keywords}</Tag>}
           {r.categories && r.categories.length > 0 && (
-            <Tag color="orange">分类: {r.categories.length}个</Tag>
+            <Tag color="orange" bordered={false}>分类: {r.categories.length}个</Tag>
           )}
-          {r.tags && r.tags.length > 0 && <Tag color="purple">标签: {r.tags.join(', ')}</Tag>}
+          {r.tags && r.tags.length > 0 && <Tag color="purple" bordered={false}>标签: {r.tags.join(', ')}</Tag>}
         </Space>
       )
     },
@@ -242,7 +246,11 @@ export default function RulePage() {
       render: (v: number, r: Rule) => {
         const name = downloaders.find(d => d.id === v)?.name || '不推送';
         const limit = r.max_downloading ? ` (≤${r.max_downloading})` : '';
-        return name + limit;
+        return (
+           <span style={{ color: v ? token.colorText : token.colorTextDisabled }}>
+              {name + limit}
+           </span>
+        );
       }
     },
     {
@@ -250,9 +258,9 @@ export default function RulePage() {
       key: 'action',
       render: (_: any, r: Rule) => (
         <Space>
-          <Button size="small" icon={<EditOutlined />} onClick={() => handleEdit(r)}>编辑</Button>
+          <Button type="text" size="small" icon={<EditOutlined />} onClick={() => handleEdit(r)} style={{ color: token.colorPrimary }}>编辑</Button>
           <Popconfirm title="确定删除？" onConfirm={() => handleDelete(r.id)}>
-            <Button size="small" danger icon={<DeleteOutlined />}>删除</Button>
+            <Button type="text" size="small" danger icon={<DeleteOutlined />}>删除</Button>
           </Popconfirm>
         </Space>
       ),
@@ -261,17 +269,35 @@ export default function RulePage() {
 
   return (
     <>
-      <div style={{ marginBottom: 16 }}>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => { 
-          setEditingRule(null); 
-          setEnableCategoryFilter(false);
-          form.resetFields(); 
-          setModalOpen(true); 
-        }}>
-          添加规则
-        </Button>
-      </div>
-      <Table columns={columns} dataSource={rules} rowKey="id" loading={loading} />
+      <Card 
+         bordered={false} 
+         className="modern-card" 
+         title={
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <FilterOutlined style={{ color: token.colorSuccess }} />
+                <span>自动下载规则</span>
+            </div>
+         }
+         extra={
+             <Button type="primary" icon={<PlusOutlined />} onClick={() => { 
+                setEditingRule(null); 
+                setEnableCategoryFilter(false);
+                form.resetFields(); 
+                setModalOpen(true); 
+              }}>
+                添加规则
+              </Button>
+         }
+         bodyStyle={{ padding: 0 }}
+      >
+        <Table 
+           columns={columns} 
+           dataSource={rules} 
+           rowKey="id" 
+           loading={loading} 
+           pagination={{ pageSize: 10 }}
+        />
+      </Card>
       
       <Modal 
         title={editingRule ? '编辑规则' : '添加规则'} 
@@ -283,58 +309,84 @@ export default function RulePage() {
         }} 
         onOk={() => form.submit()}
         width={700}
+        centered
+        maskClosable={false}
       >
-        <Form form={form} layout="vertical" onFinish={handleSubmit} size="small">
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' }}>
-            <Form.Item name="account_id" label="账号" rules={[{ required: true }]}>
-              <Select options={accounts.map(a => ({ value: a.id, label: a.username }))} />
-            </Form.Item>
-            <Form.Item name="name" label="规则名称" rules={[{ required: true }]}>
-              <Input placeholder="如：免费电影" />
-            </Form.Item>
-          </div>
+        <Form form={form} layout="vertical" onFinish={handleSubmit} size="middle" style={{ marginTop: 24 }}>
+          <Row gutter={16}>
+             <Col span={12}>
+                <Form.Item name="account_id" label="账号" rules={[{ required: true }]}>
+                   <Select options={accounts.map(a => ({ value: a.id, label: a.username }))} />
+                </Form.Item>
+             </Col>
+             <Col span={12}>
+                <Form.Item name="name" label="规则名称" rules={[{ required: true }]}>
+                   <Input placeholder="如：免费电影" />
+                </Form.Item>
+             </Col>
+          </Row>
           
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '0 16px' }}>
-            <Form.Item name="mode" label="模式" initialValue="normal">
-              <Select options={modeOptions} />
-            </Form.Item>
-            <Form.Item name="is_enabled" label="启用" valuePropName="checked" initialValue={true}>
-              <Switch />
-            </Form.Item>
-            <Form.Item name="free_only" label="仅免费" valuePropName="checked">
-              <Switch />
-            </Form.Item>
-            <Form.Item name="double_upload" label="2x上传" valuePropName="checked">
-              <Switch />
-            </Form.Item>
-          </div>
+          <Row gutter={16}>
+             <Col span={6}>
+                <Form.Item name="mode" label="模式" initialValue="normal">
+                   <Select options={modeOptions} />
+                </Form.Item>
+             </Col>
+             <Col span={6}>
+                <Form.Item name="is_enabled" label="启用" valuePropName="checked" initialValue={true}>
+                   <Switch />
+                </Form.Item>
+             </Col>
+             <Col span={6}>
+                <Form.Item name="free_only" label="仅免费" valuePropName="checked">
+                   <Switch />
+                </Form.Item>
+             </Col>
+             <Col span={6}>
+                <Form.Item name="double_upload" label="2x上传" valuePropName="checked">
+                   <Switch />
+                </Form.Item>
+             </Col>
+          </Row>
           
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '0 16px' }}>
-            <Form.Item name="min_size" label="最小(GB)">
-              <InputNumber min={0} style={{ width: '100%' }} />
-            </Form.Item>
-            <Form.Item name="max_size" label="最大(GB)">
-              <InputNumber min={0} style={{ width: '100%' }} />
-            </Form.Item>
-            <Form.Item name="min_seeders" label="最小做种">
-              <InputNumber min={0} style={{ width: '100%' }} />
-            </Form.Item>
-            <Form.Item name="max_seeders" label="最大做种">
-              <InputNumber min={0} style={{ width: '100%' }} />
-            </Form.Item>
-          </div>
+          <Row gutter={16}>
+             <Col span={6}>
+                <Form.Item name="min_size" label="最小(GB)">
+                   <InputNumber min={0} style={{ width: '100%' }} />
+                </Form.Item>
+             </Col>
+             <Col span={6}>
+                <Form.Item name="max_size" label="最大(GB)">
+                   <InputNumber min={0} style={{ width: '100%' }} />
+                </Form.Item>
+             </Col>
+             <Col span={6}>
+                <Form.Item name="min_seeders" label="最小做种">
+                   <InputNumber min={0} style={{ width: '100%' }} />
+                </Form.Item>
+             </Col>
+             <Col span={6}>
+                <Form.Item name="max_seeders" label="最大做种">
+                   <InputNumber min={0} style={{ width: '100%' }} />
+                </Form.Item>
+             </Col>
+          </Row>
           
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' }}>
-            <Form.Item name="keywords" label="关键词（逗号分隔）">
-              <Input placeholder="如：4K,HDR,REMUX" />
-            </Form.Item>
-            <Form.Item name="exclude_keywords" label="排除关键词">
-              <Input placeholder="如：CAM,TS" />
-            </Form.Item>
-          </div>
+          <Row gutter={16}>
+             <Col span={12}>
+                <Form.Item name="keywords" label="关键词（逗号分隔）">
+                   <Input placeholder="如：4K,HDR,REMUX" />
+                </Form.Item>
+             </Col>
+             <Col span={12}>
+                <Form.Item name="exclude_keywords" label="排除关键词">
+                   <Input placeholder="如：CAM,TS" />
+                </Form.Item>
+             </Col>
+          </Row>
           
           {/* 分类选择 */}
-          <Form.Item label="分类筛选">
+          <Form.Item label="分类筛选" style={{ marginBottom: 0 }}>
             <Checkbox 
               checked={enableCategoryFilter}
               onChange={(e) => {
@@ -353,6 +405,7 @@ export default function RulePage() {
               name="categories" 
               label="选择分类"
               tooltip="只下载选中分类的种子。如果不选择任何分类，则下载该模式下的所有分类"
+              style={{ marginTop: 8 }}
             >
               <Select
                 mode="multiple"
@@ -372,14 +425,18 @@ export default function RulePage() {
             </Form.Item>
           )}
           
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' }}>
-            <Form.Item name="downloader_id" label="推送到下载器">
-              <Select allowClear options={downloaders.map(d => ({ value: d.id, label: d.name }))} placeholder="不推送" />
-            </Form.Item>
-            <Form.Item name="max_downloading" label="最大同时下载" tooltip="超过此数量时暂停添加新种子">
-              <InputNumber min={1} style={{ width: '100%' }} placeholder="不限制" />
-            </Form.Item>
-          </div>
+          <Row gutter={16} style={{ marginTop: 16 }}>
+             <Col span={12}>
+                <Form.Item name="downloader_id" label="推送到下载器">
+                   <Select allowClear options={downloaders.map(d => ({ value: d.id, label: d.name }))} placeholder="不推送" />
+                </Form.Item>
+             </Col>
+             <Col span={12}>
+                <Form.Item name="max_downloading" label="最大同时下载" tooltip="超过此数量时暂停添加新种子">
+                   <InputNumber min={1} style={{ width: '100%' }} placeholder="不限制" />
+                </Form.Item>
+             </Col>
+          </Row>
           
           <Form.Item name="save_path" label="保存路径">
             <Input placeholder="如：/downloads/movies" />

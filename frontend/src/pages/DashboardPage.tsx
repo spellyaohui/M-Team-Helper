@@ -1,17 +1,19 @@
 import { useState, useEffect } from 'react';
-import { Row, Col, Card, Statistic, Table, Tag, List, Avatar, Spin, message } from 'antd';
+import { Row, Col, Card, Table, Tag, List, Avatar, Spin, message, theme, Tooltip, Progress } from 'antd';
 import { 
   UserOutlined, 
   CloudDownloadOutlined, 
   FilterOutlined, 
   HistoryOutlined,
-  GiftOutlined,
-  DownloadOutlined,
-  UploadOutlined
+  ArrowUpOutlined,
+  ArrowDownOutlined,
+  CheckCircleOutlined
 } from '@ant-design/icons';
 import { Line } from '@ant-design/plots';
 import { dashboardApi } from '../api';
 import dayjs from 'dayjs';
+
+const { useToken } = theme;
 
 interface AccountStats {
   id: number;
@@ -95,13 +97,47 @@ const formatNumber = (num: number): string => {
   return num.toString();
 };
 
+const StatCard = ({ title, value, suffix, icon, color, loading }: any) => {
+  const { token } = useToken();
+  
+  return (
+    <Card className="modern-card" bordered={false} bodyStyle={{ padding: '20px 24px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div>
+          <div style={{ color: token.colorTextSecondary, fontSize: 14, marginBottom: 4 }}>{title}</div>
+          <div style={{ fontSize: 28, fontWeight: 600, lineHeight: 1.2, color: token.colorTextHeading }}>
+            {loading ? <Spin size="small" /> : value}
+          </div>
+          {suffix && (
+            <div style={{ marginTop: 8, fontSize: 13, color: token.colorTextSecondary }}>
+              {suffix}
+            </div>
+          )}
+        </div>
+        <div 
+          className="stat-icon-wrapper"
+          style={{ 
+            background: `${color}15`, // 15 is approx 8% opacity in hex
+            color: color,
+            marginBottom: 0
+          }}
+        >
+          {icon}
+        </div>
+      </div>
+    </Card>
+  );
+};
+
 export default function DashboardPage() {
+  const { token } = useToken();
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [downloadersLoading, setDownloadersLoading] = useState(false);
 
   const fetchDashboardData = async () => {
-    setLoading(true);
+    // 首次加载显示 loading，后续静默更新
+    if (!data) setLoading(true);
     try {
       const res = await dashboardApi.getDashboardData();
       setData(res.data);
@@ -117,13 +153,12 @@ export default function DashboardPage() {
     setDownloadersLoading(true);
     try {
       const res = await dashboardApi.getDownloaderStats();
-      // 更新下载器状态，保持其他数据不变
       setData(prevData => ({
         ...prevData!,
         downloader_stats: res.data.downloader_stats
       }));
     } catch (e) {
-      message.error('获取下载器状态失败');
+      console.error('获取下载器状态失败', e);
     }
     setDownloadersLoading(false);
   };
@@ -135,10 +170,7 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!data) return;
 
-    // 初始加载完成后，每15秒刷新下载器状态
     const downloaderInterval = setInterval(fetchDownloaderStats, 15000);
-    
-    // 每60秒刷新完整仪表盘数据（账号信息、系统统计等）
     const dashboardInterval = setInterval(fetchDashboardData, 60000);
     
     return () => {
@@ -147,7 +179,7 @@ export default function DashboardPage() {
     };
   }, [data]);
 
-  if (loading || !data) {
+  if (loading && !data) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '400px' }}>
         <Spin size="large" />
@@ -155,7 +187,8 @@ export default function DashboardPage() {
     );
   }
 
-  // 准备趋势图数据
+  if (!data) return null;
+
   const trendData = Object.entries(data.download_trends)
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([date, count]) => ({
@@ -168,303 +201,293 @@ export default function DashboardPage() {
     xField: 'date',
     yField: 'downloads',
     smooth: true,
-    color: '#1668dc',
+    color: token.colorPrimary,
     point: {
       size: 4,
       shape: 'circle',
+      style: {
+        fill: '#fff',
+        stroke: token.colorPrimary,
+        lineWidth: 2,
+      },
     },
     tooltip: {
-      formatter: (datum: any) => ({
-        name: '下载数量',
-        value: datum.downloads
-      })
-    }
+      showMarkers: false,
+    },
+    areaStyle: () => {
+      return {
+        fill: `l(270) 0:#ffffff 0.5:${token.colorPrimary}20 1:${token.colorPrimary}40`,
+      };
+    },
   };
 
-  // 账号表格列
   const accountColumns = [
     {
       title: '用户名',
       dataIndex: 'username',
       key: 'username',
       render: (text: string, record: AccountStats) => (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Avatar icon={<UserOutlined />} size="small" />
-          <span>{text}</span>
-          {!record.is_active && <Tag color="red">已禁用</Tag>}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <Avatar 
+            icon={<UserOutlined />} 
+            size="small" 
+            style={{ backgroundColor: record.is_active ? token.colorPrimary : token.colorTextDisabled }} 
+          />
+          <div>
+            <div style={{ fontWeight: 500 }}>{text}</div>
+            {!record.is_active && <Tag color="red" style={{ margin: 0, fontSize: 10, lineHeight: '16px' }}>已禁用</Tag>}
+          </div>
         </div>
       )
     },
     {
-      title: '上传量',
-      dataIndex: 'upload',
-      key: 'upload',
-      render: (value: number) => (
-        <span style={{ color: '#52c41a' }}>
-          <UploadOutlined /> {formatBytes(value)}
-        </span>
-      )
-    },
-    {
-      title: '下载量',
-      dataIndex: 'download',
-      key: 'download',
-      render: (value: number) => (
-        <span style={{ color: '#1668dc' }}>
-          <DownloadOutlined /> {formatBytes(value)}
-        </span>
+      title: '数据量',
+      key: 'data',
+      render: (_: any, record: AccountStats) => (
+        <div style={{ fontSize: 13 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: token.colorSuccess }}>
+            <ArrowUpOutlined style={{ fontSize: 12 }} /> {formatBytes(record.upload)}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: token.colorPrimary }}>
+            <ArrowDownOutlined style={{ fontSize: 12 }} /> {formatBytes(record.download)}
+          </div>
+        </div>
       )
     },
     {
       title: '分享率',
       dataIndex: 'ratio',
       key: 'ratio',
-      render: (value: number) => (
-        <Tag color={value >= 1 ? 'green' : value >= 0.5 ? 'orange' : 'red'}>
-          {value.toFixed(2)}
-        </Tag>
-      )
+      render: (value: number) => {
+        let color = token.colorError;
+        if (value >= 1) color = token.colorSuccess;
+        else if (value >= 0.5) color = token.colorWarning;
+        
+        return (
+          <div style={{ fontWeight: 600, color }}>
+            {value.toFixed(2)}
+          </div>
+        );
+      }
     },
     {
       title: '魔力值',
       dataIndex: 'bonus',
       key: 'bonus',
       render: (value: number) => (
-        <span style={{ color: '#722ed1' }}>
-          <GiftOutlined /> {formatNumber(value)}
+        <span style={{ color: '#722ed1', fontWeight: 500 }}>
+          {formatNumber(value)}
         </span>
       )
-    },
-    {
-      title: '最后登录',
-      dataIndex: 'last_login',
-      key: 'last_login',
-      render: (value: string | null) => 
-        value ? dayjs(value).format('YYYY-MM-DD HH:mm') : '从未登录'
     }
   ];
 
   return (
-    <div style={{ padding: '0 0 24px 0' }}>
-      {/* 系统概览 */}
-      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        <Col xs={24} sm={12} md={6}>
-          <Card>
-            <Statistic
-              title="总账号数"
-              value={data.system_stats.total_accounts}
-              prefix={<UserOutlined />}
-              suffix={`/ ${data.system_stats.active_accounts} 活跃`}
-              valueStyle={{ color: '#1668dc' }}
-            />
-          </Card>
+    <div style={{ paddingBottom: 24 }}>
+      {/* 顶部统计卡片 */}
+      <Row gutter={[24, 24]} style={{ marginBottom: 24 }}>
+        <Col xs={24} sm={12} lg={6}>
+          <StatCard
+            title="总账号数"
+            value={data.system_stats.total_accounts}
+            suffix={<span style={{ color: token.colorSuccess }}>{data.system_stats.active_accounts} 个活跃中</span>}
+            icon={<UserOutlined />}
+            color={token.colorPrimary}
+          />
         </Col>
-        <Col xs={24} sm={12} md={6}>
-          <Card>
-            <Statistic
-              title="自动规则"
-              value={data.system_stats.total_rules}
-              prefix={<FilterOutlined />}
-              suffix={`/ ${data.system_stats.active_rules} 启用`}
-              valueStyle={{ color: '#52c41a' }}
-            />
-          </Card>
+        <Col xs={24} sm={12} lg={6}>
+          <StatCard
+            title="自动规则"
+            value={data.system_stats.total_rules}
+            suffix={<span style={{ color: token.colorSuccess }}>{data.system_stats.active_rules} 个启用中</span>}
+            icon={<FilterOutlined />}
+            color={token.colorSuccess}
+          />
         </Col>
-        <Col xs={24} sm={12} md={6}>
-          <Card>
-            <Statistic
-              title="下载器"
-              value={data.system_stats.total_downloaders}
-              prefix={<CloudDownloadOutlined />}
-              suffix={`/ ${data.system_stats.active_downloaders} 在线`}
-              valueStyle={{ color: '#722ed1' }}
-            />
-          </Card>
+        <Col xs={24} sm={12} lg={6}>
+          <StatCard
+            title="下载器"
+            value={data.system_stats.total_downloaders}
+            suffix={<span style={{ color: token.colorSuccess }}>{data.system_stats.active_downloaders} 个在线</span>}
+            icon={<CloudDownloadOutlined />}
+            color="#722ed1"
+          />
         </Col>
-        <Col xs={24} sm={12} md={6}>
-          <Card>
-            <Statistic
-              title="总下载数"
-              value={data.system_stats.total_downloads}
-              prefix={<HistoryOutlined />}
-              suffix={`/ ${data.system_stats.recent_downloads} 今日`}
-              valueStyle={{ color: '#fa8c16' }}
-            />
-          </Card>
+        <Col xs={24} sm={12} lg={6}>
+          <StatCard
+            title="今日下载"
+            value={data.system_stats.recent_downloads}
+            suffix={`总计 ${data.system_stats.total_downloads} 个种子`}
+            icon={<HistoryOutlined />}
+            color={token.colorWarning}
+          />
         </Col>
       </Row>
 
-      <Row gutter={[16, 16]}>
-        {/* 下载趋势图 */}
+      <Row gutter={[24, 24]}>
+        {/* 左侧主要内容 */}
         <Col xs={24} lg={16}>
-          <Card title="下载趋势（最近7天）" style={{ height: 400 }}>
-            <Line {...trendConfig} height={300} />
+          {/* 下载趋势 */}
+          <Card 
+            title="下载趋势 (近7天)" 
+            className="modern-card" 
+            bordered={false}
+            style={{ marginBottom: 24 }}
+          >
+            <div style={{ height: 300 }}>
+              <Line {...trendConfig} />
+            </div>
+          </Card>
+
+          {/* 账号列表 */}
+          <Card 
+            title="账号状态" 
+            className="modern-card" 
+            bordered={false}
+          >
+            <Table
+              columns={accountColumns}
+              dataSource={data.account_stats}
+              rowKey="id"
+              pagination={false}
+              size="middle"
+            />
           </Card>
         </Col>
 
-        {/* 下载器状态 */}
+        {/* 右侧边栏 */}
         <Col xs={24} lg={8}>
+          {/* 下载器状态 */}
           <Card 
             title={
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span>下载器状态</span>
                 {downloadersLoading && <Spin size="small" />}
               </div>
-            } 
-            style={{ height: 400 }}
+            }
+            className="modern-card" 
+            bordered={false}
+            style={{ marginBottom: 24 }}
+            bodyStyle={{ padding: '12px 12px' }}
           >
-            <div style={{ maxHeight: 300, overflowY: 'auto' }}>
+            <div style={{ maxHeight: 600, overflowY: 'auto' }}>
               {data.downloader_stats.map(downloader => (
                 <Card 
                   key={downloader.id} 
-                  size="small" 
+                  size="small"
+                  bordered={false}
                   style={{ 
                     marginBottom: 12,
-                    opacity: downloadersLoading ? 0.7 : 1,
-                    transition: 'opacity 0.3s'
+                    background: token.colorBgLayout,
+                    borderRadius: token.borderRadiusLG
                   }}
-                  bodyStyle={{ padding: 12 }}
                 >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <Tag color={downloader.type === 'qbittorrent' ? 'blue' : 'green'}>
+                      <Avatar 
+                        size="small" 
+                        shape="square"
+                        style={{ 
+                          backgroundColor: downloader.type === 'qbittorrent' ? '#2f6eb5' : '#1e6823' 
+                        }}
+                      >
                         {downloader.type === 'qbittorrent' ? 'qB' : 'TR'}
-                      </Tag>
-                      <strong>{downloader.name}</strong>
+                      </Avatar>
+                      <span style={{ fontWeight: 600 }}>{downloader.name}</span>
                     </div>
-                    <Tag color={downloader.is_active ? 'green' : 'red'}>
+                    <Tag color={downloader.is_active ? 'success' : 'error'} style={{ margin: 0 }}>
                       {downloader.is_active ? '在线' : '离线'}
                     </Tag>
                   </div>
-                  
+
                   {downloader.is_active && (
-                    <div>
-                      {/* 速度信息 */}
-                      <div style={{ marginBottom: 8, padding: '8px 0', borderBottom: '1px solid #f0f0f0' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                          <span style={{ color: '#1668dc' }}>↓ 下载速度:</span>
-                          <span style={{ color: '#1668dc', fontWeight: 'bold' }}>
+                    <>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
+                        <div style={{ background: token.colorBgContainer, padding: 8, borderRadius: 6 }}>
+                          <div style={{ fontSize: 12, color: token.colorTextSecondary }}>下载速度</div>
+                          <div style={{ color: token.colorPrimary, fontWeight: 600 }}>
                             {formatSpeed(downloader.download_speed)}
-                          </span>
+                          </div>
                         </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                          <span style={{ color: '#52c41a' }}>↑ 上传速度:</span>
-                          <span style={{ color: '#52c41a', fontWeight: 'bold' }}>
+                        <div style={{ background: token.colorBgContainer, padding: 8, borderRadius: 6 }}>
+                          <div style={{ fontSize: 12, color: token.colorTextSecondary }}>上传速度</div>
+                          <div style={{ color: token.colorSuccess, fontWeight: 600 }}>
                             {formatSpeed(downloader.upload_speed)}
-                          </span>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                          <span>连接状态:</span>
-                          <Tag color={
-                            downloader.connection_status === 'connected' ? 'green' : 
-                            downloader.connection_status === 'checking' ? 'blue' :
-                            downloader.connection_status === 'timeout' ? 'orange' :
-                            downloader.connection_status === 'error' ? 'red' : 'default'
-                          }>
-                            {downloader.connection_status === 'connected' ? '已连接' : 
-                             downloader.connection_status === 'checking' ? '检查中' :
-                             downloader.connection_status === 'timeout' ? '超时' :
-                             downloader.connection_status === 'error' ? '错误' :
-                             downloader.connection_status === 'offline' ? '离线' : '未知'}
-                          </Tag>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span style={{ color: '#722ed1' }}>💾 剩余空间:</span>
-                          <span style={{ color: '#722ed1', fontWeight: 'bold' }}>
-                            {downloader.free_space_gb > 0 ? `${downloader.free_space_gb.toFixed(1)} GB` : '未知'}
-                          </span>
+                          </div>
                         </div>
                       </div>
-                      
-                      {/* 种子统计 */}
-                      <div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                          <span>下载中:</span>
-                          <span style={{ color: '#1668dc', fontWeight: 'bold' }}>
-                            {downloader.downloading_count}
-                          </span>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                          <span>做种中:</span>
-                          <span style={{ color: '#52c41a', fontWeight: 'bold' }}>
-                            {downloader.seeding_count}
-                          </span>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span>未完成:</span>
-                          <span style={{ color: '#fa8c16', fontWeight: 'bold' }}>
-                            {downloader.incomplete_torrents.length}
-                          </span>
-                        </div>
+
+                      <div style={{ marginBottom: 8 }}>
+                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
+                            <span>剩余空间</span>
+                            <span>{formatBytes(downloader.free_space_bytes)}</span>
+                         </div>
+                         <Progress 
+                            percent={Math.min(100, Math.max(0, 100 - (downloader.free_space_bytes / (downloader.free_space_bytes + 1000000000000)) * 100))} // 这里只是个模拟，因为不知道总空间
+                            showInfo={false} 
+                            size="small"
+                            status="active"
+                            strokeColor={token.colorPrimary}
+                         />
                       </div>
-                    </div>
+
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: token.colorTextSecondary }}>
+                        <span>下载: {downloader.downloading_count}</span>
+                        <span>做种: {downloader.seeding_count}</span>
+                        <span>未完成: {downloader.incomplete_torrents.length}</span>
+                      </div>
+                    </>
                   )}
                 </Card>
               ))}
             </div>
           </Card>
-        </Col>
 
-        {/* 账号统计 */}
-        <Col xs={24}>
-          <Card title="账号统计" style={{ marginBottom: 16 }}>
-            <Table
-              columns={accountColumns}
-              dataSource={data.account_stats}
-              rowKey="id"
-              pagination={false}
-              size="small"
-            />
-          </Card>
-        </Col>
-
-        {/* 最近活动 */}
-        <Col xs={24}>
-          <Card title="最近下载活动">
+          {/* 最近活动 */}
+          <Card 
+            title="最近活动" 
+            className="modern-card" 
+            bordered={false}
+            bodyStyle={{ padding: '0 24px' }}
+          >
             <List
               itemLayout="horizontal"
-              dataSource={data.recent_activities}
+              dataSource={data.recent_activities.slice(0, 5)}
               renderItem={activity => (
-                <List.Item>
+                <List.Item style={{ padding: '16px 0' }}>
                   <List.Item.Meta
                     avatar={
-                      <Avatar 
-                        style={{ 
-                          backgroundColor: activity.status === 'completed' ? '#52c41a' : 
-                                          activity.status === 'failed' ? '#ff4d4f' : '#1668dc' 
-                        }}
-                      >
-                        {activity.status === 'completed' ? '✓' : 
-                         activity.status === 'failed' ? '✗' : '↓'}
-                      </Avatar>
-                    }
-                    title={
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <span style={{ fontWeight: 'normal' }}>{activity.torrent_name}</span>
-                        {activity.discount_type && (
-                          <Tag color={activity.discount_type === 'FREE' ? 'green' : 'blue'}>
-                            {activity.discount_type}
-                          </Tag>
-                        )}
+                      <div style={{ 
+                        width: 36, 
+                        height: 36, 
+                        borderRadius: '50%', 
+                        background: activity.status === 'completed' ? '#f6ffed' : '#e6f7ff',
+                        border: `1px solid ${activity.status === 'completed' ? '#b7eb8f' : '#91caff'}`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: activity.status === 'completed' ? '#52c41a' : '#1890ff'
+                      }}>
+                        {activity.status === 'completed' ? <CheckCircleOutlined /> : <CloudDownloadOutlined />}
                       </div>
                     }
-                    description={
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span>账号: {activity.account_username}</span>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <Tag color={
-                            activity.status === 'completed' ? 'green' :
-                            activity.status === 'failed' ? 'red' :
-                            activity.status === 'expired_deleted' ? 'orange' : 'blue'
-                          }>
-                            {activity.status === 'completed' ? '已完成' :
-                             activity.status === 'failed' ? '失败' :
-                             activity.status === 'expired_deleted' ? '已删除' : '下载中'}
-                          </Tag>
-                          <span style={{ color: '#8c8c8c', fontSize: '12px' }}>
-                            {dayjs(activity.created_at).format('MM-DD HH:mm')}
-                          </span>
+                    title={
+                      <Tooltip title={activity.torrent_name}>
+                        <div style={{ 
+                          width: '100%', 
+                          overflow: 'hidden', 
+                          textOverflow: 'ellipsis', 
+                          whiteSpace: 'nowrap',
+                          fontSize: 14 
+                        }}>
+                          {activity.torrent_name}
                         </div>
+                      </Tooltip>
+                    }
+                    description={
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginTop: 4 }}>
+                        <span>{activity.account_username}</span>
+                        <span>{dayjs(activity.created_at).format('MM-DD HH:mm')}</span>
                       </div>
                     }
                   />
