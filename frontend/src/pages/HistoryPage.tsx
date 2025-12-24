@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { Table, Button, Select, Tag, message, Popconfirm, Space, Tooltip, Modal, Upload, Form, Input } from 'antd';
 import { DeleteOutlined, ClearOutlined, SyncOutlined, InfoCircleOutlined, UploadOutlined, InboxOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
@@ -85,6 +85,15 @@ export default function HistoryPage() {
   };
 
   useEffect(() => { fetchHistory(); }, []);
+
+  // 自动刷新：每30秒刷新一次历史记录
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchHistory(page, accountId);
+    }, 30000);
+    
+    return () => clearInterval(interval);
+  }, [page, accountId]);
 
   const handleDelete = async (id: number) => {
     try {

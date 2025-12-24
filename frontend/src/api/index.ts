@@ -1,9 +1,26 @@
 import axios from 'axios';
 
+// 检测是否在 Electron 环境中运行
+const isElectron = typeof window !== 'undefined' && 
+  (window.navigator.userAgent.includes('Electron') || 
+   window.location.protocol === 'file:');
+
 // 生产环境和开发环境的API配置
 const isDevelopment = import.meta.env.DEV;
+
+// Electron 环境下使用本地后端地址
+const getBaseURL = () => {
+  if (isDevelopment) {
+    return 'http://localhost:8001';
+  }
+  if (isElectron) {
+    return 'http://localhost:8001';
+  }
+  return '';  // Web 生产环境使用相对路径
+};
+
 const api = axios.create({
-  baseURL: isDevelopment ? 'http://localhost:8001' : '',
+  baseURL: getBaseURL(),
   timeout: 30000,
 });
 

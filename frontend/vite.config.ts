@@ -3,6 +3,8 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
+  // Electron 打包需要使用相对路径
+  base: './',
   server: {
     port: 4000,
     host: 'localhost',
