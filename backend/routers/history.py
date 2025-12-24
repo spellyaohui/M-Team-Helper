@@ -640,6 +640,8 @@ async def delete_history(history_id: int, db: Session = Depends(get_db)):
     if not history:
         raise HTTPException(status_code=404, detail="记录不存在")
     
+    print(f"[History] 删除记录: id={history_id}, status={history.status}, info_hash={history.info_hash}, downloader_id={history.downloader_id}")
+    
     # 如果有关联的下载器和 info_hash，尝试删除下载器中的种子
     torrent_deleted = False
     if history.info_hash and history.downloader_id:
@@ -654,8 +656,14 @@ async def delete_history(history_id: int, db: Session = Depends(get_db)):
                 print(f"[History] 删除下载器种子时出错（可能已不存在）: {e}")
     
     # 无论下载器删除是否成功，都删除数据库记录
-    db.delete(history)
-    db.commit()
+    try:
+        db.delete(history)
+        db.commit()
+        print(f"[History] 数据库记录删除成功: {history.torrent_name}")
+    except Exception as e:
+        db.rollback()
+        print(f"[History] 数据库记录删除失败: {e}")
+        raise HTTPException(status_code=500, detail=f"删除数据库记录失败: {str(e)}")
     
     message = "删除成功"
     if history.info_hash and history.downloader_id:

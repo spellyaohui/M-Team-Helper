@@ -217,8 +217,21 @@ async def auto_download_torrents():
                 torrents = [parse_torrent(t) for t in result["data"].get("data", [])]
                 print(f"[Scheduler] 规则 '{rule.name}' 获取到 {len(torrents)} 个种子")
                 
+                # 批量查询这些种子在 M-Team 网站的下载历史
+                tracker_history = {}
+                if torrents:
+                    torrent_ids = [t["id"] for t in torrents]
+                    history_result = await api.query_tracker_history(torrent_ids)
+                    if history_result["success"]:
+                        tracker_history = history_result["data"].get("historyMap", {})
+                        if tracker_history:
+                            print(f"[Scheduler] 规则 '{rule.name}' 查询到 {len(tracker_history)} 个种子有下载历史")
+                
+                # 本次任务已推送的种子数量（用于精确控制下载数量）
+                pushed_count_this_run = 0
+                
                 for torrent in torrents:
-                    # 检查是否已下载
+                    # 检查是否已在本地下载历史中
                     existing = db.query(DownloadHistory).filter(
                         DownloadHistory.account_id == account.id,
                         DownloadHistory.torrent_id == torrent["id"]
@@ -227,11 +240,18 @@ async def auto_download_torrents():
                     if existing:
                         continue
                     
+                    # 检查是否在 M-Team 网站有下载历史（曾经下载过）
+                    if torrent["id"] in tracker_history:
+                        history_info = tracker_history[torrent["id"]]
+                        # 有下载历史记录，说明曾经下载过，跳过
+                        print(f"[Scheduler] 跳过已下载过的种子: {torrent['name']} (网站记录: 上传={history_info.get('uploaded', 0)}, 下载={history_info.get('download', 0)})")
+                        continue
+                    
                     # 检查是否匹配规则
                     if not match_torrent(torrent, rule):
                         continue
                     
-                    # 再次检查下载队列限制（防止在处理过程中队列状态发生变化）
+                    # 检查下载队列限制（结合下载器实时状态和本次已推送数量）
                     if rule.downloader_id and rule.max_downloading:
                         downloader = db.query(Downloader).filter(
                             Downloader.id == rule.downloader_id
@@ -239,8 +259,10 @@ async def auto_download_torrents():
                         
                         if downloader:
                             current_downloading = await get_downloading_count(downloader)
-                            if current_downloading >= rule.max_downloading:
-                                print(f"[Scheduler] 下载队列已满 ({current_downloading}/{rule.max_downloading})，停止处理更多种子")
+                            # 加上本次已推送的数量，确保不会超过限制
+                            effective_downloading = current_downloading + pushed_count_this_run
+                            if effective_downloading >= rule.max_downloading:
+                                print(f"[Scheduler] 下载队列已满 ({current_downloading}+{pushed_count_this_run}/{rule.max_downloading})，停止处理更多种子")
                                 break  # 跳出种子循环，但继续处理下一个规则
                     
                     print(f"[Scheduler] 匹配规则 '{rule.name}': {torrent['name']}")
@@ -272,6 +294,10 @@ async def auto_download_torrents():
                             )
                             status = "pushing" if info_hash else "push_failed"
                             print(f"[Scheduler] 推送到下载器: {bool(info_hash)}, hash: {info_hash}")
+                            
+                            # 推送成功，增加本次已推送计数
+                            if info_hash:
+                                pushed_count_this_run += 1
                     
                     # 解析促销到期时间
                     discount_end_time = None

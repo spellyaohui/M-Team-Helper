@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     FIRECRAWL_URL: str = "http://localhost:4001"
     
     # M-Team 配置
-    MTEAM_BASE_URL: str = "https://test2.m-team.cc"
+    MTEAM_BASE_URL: str = "https://api.m-team.cc"
     
     # 定时任务间隔（秒）
     REFRESH_INTERVAL: int = 300

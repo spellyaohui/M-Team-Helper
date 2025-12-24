@@ -103,11 +103,16 @@ export default function HistoryPage() {
 
   const handleDelete = async (id: number) => {
     try {
-      await historyApi.delete(id);
-      message.success('删除成功');
+      const response = await historyApi.delete(id);
+      if (response.data.success) {
+        message.success(response.data.message || '删除成功');
+      } else {
+        message.error(response.data.message || '删除失败');
+      }
       fetchHistory();
-    } catch (e) {
-      message.error('删除失败');
+    } catch (e: any) {
+      console.error('删除失败:', e);
+      message.error(e.response?.data?.detail || e.message || '删除失败');
     }
   };
 

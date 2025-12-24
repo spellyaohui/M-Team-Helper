@@ -160,6 +160,51 @@ class MTeamAPI:
     async def get_processing_list(self) -> Dict[str, Any]:
         """获取处理列表"""
         return await self._request("torrent/processingList")
+    
+    async def query_tracker_history(self, torrent_ids: List[str]) -> Dict[str, Any]:
+        """查询种子的下载历史
+        
+        这个接口可以查询用户是否曾经下载过某些种子，
+        用于避免重复下载已经下载过的种子。
+        
+        Args:
+            torrent_ids: 种子 ID 列表
+            
+        Returns:
+            包含 historyMap 的字典，key 是种子 ID，value 是下载历史信息
+        """
+        if not torrent_ids:
+            return {"success": True, "data": {"historyMap": {}, "peerMap": {}}}
+        
+        import time
+        payload = {
+            "tids": torrent_ids,
+            "_timestamp": int(time.time() * 1000)
+        }
+        
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(
+                    f"{self.base_url}/tracker/queryHistory",
+                    headers={
+                        "x-api-key": self.api_key,
+                        "accept": "application/json, text/plain, */*",
+                        "content-type": "application/json",
+                    },
+                    json=payload
+                )
+                
+                if response.status_code != 200:
+                    return {"success": False, "error": f"HTTP错误: {response.status_code}"}
+                
+                result = response.json()
+                if result.get("code") == "0":
+                    return {"success": True, "data": result.get("data", {})}
+                else:
+                    return {"success": False, "error": result.get("message", "查询失败")}
+                    
+        except Exception as e:
+            return {"success": False, "error": f"请求异常: {str(e)}"}
 
 
 # 折扣类型映射
