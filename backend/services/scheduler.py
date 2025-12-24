@@ -627,6 +627,91 @@ async def check_dynamic_delete():
     finally:
         db.close()
 
+
+async def sync_download_status():
+    """定时同步下载历史状态
+    
+    从下载器获取种子的实际状态，更新到下载历史记录中。
+    这样用户可以在历史页面看到种子的实时状态（下载中、已完成、做种中等）。
+    """
+    # 记录执行时间
+    last_execution_times["sync_status"] = beijing_now()
+    
+    db = SessionLocal()
+    try:
+        # 获取所有有 info_hash 且状态不是终态的记录
+        records = db.query(DownloadHistory).filter(
+            DownloadHistory.info_hash != None,
+            DownloadHistory.downloader_id != None,
+            DownloadHistory.status.notin_(["failed", "expired_deleted", "dynamic_deleted"])
+        ).all()
+        
+        if not records:
+            return
+        
+        updated_count = 0
+        
+        for record in records:
+            downloader = db.query(Downloader).filter(Downloader.id == record.downloader_id).first()
+            if not downloader:
+                continue
+                
+            try:
+                torrent_info = await get_torrent_info_with_tags(downloader, record.info_hash)
+                
+                if torrent_info is None:
+                    # 种子不存在，可能已被删除
+                    if record.status != "deleted":
+                        record.status = "deleted"
+                        updated_count += 1
+                else:
+                    # 根据种子状态更新记录状态
+                    progress = torrent_info.get("progress", 0)
+                    qb_state = torrent_info.get("state", "")
+                    
+                    new_status = None
+                    
+                    if progress >= 100 or torrent_info.get("is_completed", False):
+                        # 已完成
+                        if qb_state in ["uploading", "stalledUP", "queuedUP", "forcedUP"]:
+                            new_status = "seeding"  # 做种中
+                        else:
+                            new_status = "completed"  # 已完成
+                    elif progress > 0:
+                        # 下载中
+                        if qb_state in ["downloading", "stalledDL", "queuedDL", "metaDL", "forcedDL"]:
+                            new_status = "downloading"  # 下载中
+                        elif qb_state == "pausedDL":
+                            new_status = "paused"  # 已暂停
+                        else:
+                            new_status = "downloading"
+                    else:
+                        # 未开始或其他状态
+                        if qb_state == "pausedDL":
+                            new_status = "paused"  # 已暂停
+                        elif qb_state in ["queuedDL", "allocating"]:
+                            new_status = "queued"  # 队列中
+                        else:
+                            new_status = "downloading"
+                    
+                    if new_status and record.status != new_status:
+                        record.status = new_status
+                        updated_count += 1
+                        
+            except Exception as e:
+                # 静默处理错误，避免日志刷屏
+                continue
+        
+        if updated_count > 0:
+            db.commit()
+            print(f"[Scheduler] 状态同步完成，更新了 {updated_count} 条记录")
+        
+    except Exception as e:
+        print(f"[Scheduler] 状态同步任务失败: {e}")
+    finally:
+        db.close()
+
+
 def start_scheduler():
     """启动定时任务"""
     intervals = get_refresh_intervals()
@@ -663,11 +748,20 @@ def start_scheduler():
         replace_existing=True
     )
     
+    # 下载状态同步任务（每60秒执行一次）
+    scheduler.add_job(
+        sync_download_status,
+        IntervalTrigger(seconds=60),  # 1分钟
+        id="sync_status",
+        replace_existing=True
+    )
+    
     scheduler.start()
     print(f"[Scheduler] 定时任务已启动")
     print(f"[Scheduler] 账号刷新间隔: {intervals['account_refresh_interval']}秒")
     print(f"[Scheduler] 种子检查间隔: {intervals['torrent_check_interval']}秒")
     print(f"[Scheduler] 过期检查间隔: {intervals['expired_check_interval']}秒")
+    print(f"[Scheduler] 状态同步间隔: 60秒")
 
 
 def stop_scheduler():
