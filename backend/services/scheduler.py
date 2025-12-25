@@ -75,6 +75,8 @@ def is_task_allowed(task_name: str) -> bool:
     """检查当前时间是否允许执行指定任务
     
     task_name: auto_download, expired_check, account_refresh
+    
+    优先级规则：如果当前时间匹配多个时间段，取时间范围最小（最具体）的那个
     """
     control = get_schedule_control()
     
@@ -88,8 +90,10 @@ def is_task_allowed(task_name: str) -> bool:
     
     # 获取当前北京时间
     now = beijing_now()
-    current_time = now.strftime("%H:%M")
     current_minutes = now.hour * 60 + now.minute
+    
+    # 找出所有匹配当前时间的时间段
+    matched_ranges = []
     
     for time_range in time_ranges:
         start = time_range.get("start", "00:00")
@@ -105,16 +109,36 @@ def is_task_allowed(task_name: str) -> bool:
         if start_minutes <= end_minutes:
             # 正常情况
             in_range = start_minutes <= current_minutes < end_minutes
+            duration = end_minutes - start_minutes
         else:
             # 跨天情况
             in_range = current_minutes >= start_minutes or current_minutes < end_minutes
+            duration = (24 * 60 - start_minutes) + end_minutes
         
         if in_range:
-            # 在这个时间段内，检查任务是否允许
-            return time_range.get(task_name, True)
+            matched_ranges.append({
+                "range": time_range,
+                "duration": duration,
+                "start": start,
+                "end": end
+            })
     
-    # 如果不在任何时间段内，默认允许
-    return True
+    if not matched_ranges:
+        # 如果不在任何时间段内，默认允许
+        return True
+    
+    # 按时间范围长度排序，取最小的（最具体的）
+    matched_ranges.sort(key=lambda x: x["duration"])
+    best_match = matched_ranges[0]
+    
+    result = best_match["range"].get(task_name, True)
+    
+    # 调试日志
+    if len(matched_ranges) > 1:
+        print(f"[Scheduler] 时间 {now.strftime('%H:%M')} 匹配到 {len(matched_ranges)} 个时间段，"
+              f"选择最具体的 {best_match['start']}-{best_match['end']}，{task_name}={'允许' if result else '禁用'}")
+    
+    return result
 
 
 async def refresh_all_accounts():
