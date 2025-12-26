@@ -437,6 +437,16 @@ npm run build
 ### 前端
 - React 19、TypeScript 5、Ant Design 5、Vite 7
 
+## 🌟 Star History
+
+如果这个项目对你有帮助，请给一个 ⭐ Star 支持一下！
+
+[![Star History Chart](https://api.star-history.com/svg?repos=spellyaohui/M-Team-Helper&type=Date)](https://star-history.com/#spellyaohui/M-Team-Helper&Date)
+
+---
+
+**Made with ❤️ by [spellyaohui](https://github.com/spellyaohui)**
+
 ## License
 
 MIT
