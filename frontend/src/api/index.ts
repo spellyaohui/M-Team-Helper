@@ -170,7 +170,7 @@ export const dashboardApi = {
   getDashboardData: () => api.get('/dashboard/'),
   getAccountStats: (accountId: number) => api.get(`/dashboard/accounts/${accountId}/stats`),
   // 新增：单独获取下载器状态的接口
-  getDownloaderStats: () => api.get('/downloaders/stats'),
+  getDownloaderStats: () => api.get('/dashboard/downloader-stats'),
 };
 
 export default api;

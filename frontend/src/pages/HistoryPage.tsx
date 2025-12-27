@@ -73,33 +73,109 @@ export default function HistoryPage() {
     downloaderApi.list().then(res => setDownloaders(res.data));
   }, []);
 
-  const fetchHistory = async (p = page, accId = accountId) => {
+  const fetchHistory = async (p = page, accId = accountId, pageSize = 50) => {
+    // 防抖：如果正在加载，直接返回
+    if (loading) {
+      console.log('[History] 正在加载中，跳过重复请求');
+      return;
+    }
+    
+    console.log(`[History] 开始获取历史记录: page=${p}, accountId=${accId}, pageSize=${pageSize}`);
     setLoading(true);
+    
     try {
-      const res = await historyApi.list({ account_id: accId, page: p, page_size: 20 });
+      const res = await historyApi.list({ account_id: accId, page: p, page_size: pageSize });
+      console.log(`[History] 获取成功: 总数=${res.data.total}, 当前页数据=${res.data.data.length}`);
       setHistory(res.data.data);
       setTotal(res.data.total);
     } catch (e) {
+      console.error('[History] 获取历史记录失败:', e);
       message.error('获取历史记录失败');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
-  useEffect(() => { fetchHistory(); }, []);
+  useEffect(() => { 
+    fetchHistory(); 
+  }, []);
 
-  // 自动刷新：每30秒同步状态（不导入新种子）
+  // 优化自动刷新：减少同步频率，避免影响用户操作
   useEffect(() => {
-    const interval = setInterval(async () => {
-      try {
-        await historyApi.syncStatus(false);  // 自动同步不导入新种子
-        fetchHistory(page, accountId);
-      } catch (e) {
-        console.error('自动同步状态失败:', e);
-      }
-    }, 30000);
+    let interval: number;
+    let lastSyncTime = 0;
+    let isUserInteracting = false;
     
-    return () => clearInterval(interval);
-  }, [page, accountId]);
+    // 监听用户交互
+    const handleUserInteraction = () => {
+      isUserInteracting = true;
+      // 3秒后重置交互状态
+      setTimeout(() => {
+        isUserInteracting = false;
+      }, 3000);
+    };
+    
+    // 添加用户交互监听器
+    document.addEventListener('click', handleUserInteraction);
+    document.addEventListener('keydown', handleUserInteraction);
+    
+    const startAutoRefresh = () => {
+      // 增加刷新间隔到 120 秒，减少服务器压力
+      interval = setInterval(async () => {
+        // 检查页面是否可见和用户是否在交互
+        if (document.hidden || isUserInteracting || loading) {
+          console.log('[History] 跳过自动刷新：页面不可见或用户正在交互或正在加载');
+          return;
+        }
+        
+        const now = Date.now();
+        
+        try {
+          // 只有超过 5 分钟才执行状态同步，否则只刷新列表
+          if (now - lastSyncTime > 300000) { // 5分钟
+            console.log('[History] 执行状态同步');
+            await historyApi.syncStatus(false);
+            lastSyncTime = now;
+          }
+          
+          // 总是刷新列表（这个很快）
+          console.log('[History] 自动刷新列表');
+          fetchHistory(page, accountId);
+        } catch (e) {
+          console.error('自动刷新失败:', e);
+        }
+      }, 120000); // 从 60 秒改为 120 秒
+    };
+    
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        // 页面不可见时清除定时器
+        if (interval) {
+          clearInterval(interval);
+          console.log('[History] 页面不可见，停止自动刷新');
+        }
+      } else {
+        // 页面可见时重新开始刷新
+        console.log('[History] 页面可见，开始自动刷新');
+        startAutoRefresh();
+      }
+    };
+    
+    // 监听页面可见性变化
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    // 初始启动
+    startAutoRefresh();
+    
+    return () => {
+      if (interval) {
+        clearInterval(interval);
+      }
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      document.removeEventListener('click', handleUserInteraction);
+      document.removeEventListener('keydown', handleUserInteraction);
+    };
+  }, [page, accountId, loading]); // 添加 loading 依赖
 
   const handleDelete = async (id: number) => {
     try {
@@ -374,8 +450,28 @@ export default function HistoryPage() {
         pagination={{
           current: page,
           total,
-          pageSize: 20,
-          onChange: (p) => { setPage(p); fetchHistory(p); }
+          pageSize: 50,  // 默认 50 条
+          showSizeChanger: true,  // 允许用户改变页面大小
+          showQuickJumper: true,  // 显示快速跳转
+          showTotal: (total, range) => `第 ${range[0]}-${range[1]} 条，共 ${total} 条`,
+          pageSizeOptions: ['20', '50', '100', '200'],  // 页面大小选项
+          onChange: (p, size) => { 
+            console.log(`[History] 分页变化: page=${p}, size=${size}, current=${page}`);
+            // 防止重复请求相同页面
+            if (p !== page) {
+              setPage(p); 
+              fetchHistory(p, accountId, size);
+              // 滚动到表格顶部
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+          },
+          onShowSizeChange: (current, size) => {
+            console.log(`[History] 页面大小变化: current=${current}, size=${size}`);
+            setPage(1);
+            fetchHistory(1, accountId, size);
+            // 滚动到表格顶部
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }
         }}
       />
       

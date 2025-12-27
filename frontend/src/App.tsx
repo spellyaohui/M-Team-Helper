@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { ConfigProvider, Layout, Menu, Avatar, Dropdown, Spin, Button } from 'antd';
 import {
   UserOutlined,
@@ -16,16 +16,18 @@ import {
 } from '@ant-design/icons';
 import zhCN from 'antd/locale/zh_CN';
 import LoginPage from './pages/LoginPage';
-import AccountPage from './pages/AccountPage';
-import TorrentPage from './pages/TorrentPage';
-import RulePage from './pages/RulePage';
-import DownloaderPage from './pages/DownloaderPage';
-import HistoryPage from './pages/HistoryPage';
-import DashboardPage from './pages/DashboardPage';
-import SettingsPage from './pages/SettingsPage';
 import { authApi } from './api';
 import { lightTheme, darkTheme } from './theme';
 import './App.css';
+
+// 懒加载页面组件
+const AccountPage = lazy(() => import('./pages/AccountPage'));
+const TorrentPage = lazy(() => import('./pages/TorrentPage'));
+const RulePage = lazy(() => import('./pages/RulePage'));
+const DownloaderPage = lazy(() => import('./pages/DownloaderPage'));
+const HistoryPage = lazy(() => import('./pages/HistoryPage'));
+const DashboardPage = lazy(() => import('./pages/DashboardPage'));
+const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 
 const { Header, Sider, Content } = Layout;
 
@@ -118,16 +120,33 @@ function App() {
   ];
 
   const renderPage = () => {
-    switch (currentPage) {
-      case 'dashboard': return <DashboardPage />;
-      case 'accounts': return <AccountPage />;
-      case 'torrents': return <TorrentPage />;
-      case 'rules': return <RulePage />;
-      case 'downloaders': return <DownloaderPage />;
-      case 'history': return <HistoryPage />;
-      case 'settings': return <SettingsPage />;
-      default: return <DashboardPage />;
-    }
+    const PageComponent = (() => {
+      switch (currentPage) {
+        case 'dashboard': return DashboardPage;
+        case 'accounts': return AccountPage;
+        case 'torrents': return TorrentPage;
+        case 'rules': return RulePage;
+        case 'downloaders': return DownloaderPage;
+        case 'history': return HistoryPage;
+        case 'settings': return SettingsPage;
+        default: return DashboardPage;
+      }
+    })();
+
+    return (
+      <Suspense fallback={
+        <div style={{ 
+          display: 'flex', 
+          justifyContent: 'center', 
+          alignItems: 'center', 
+          height: '400px' 
+        }}>
+          <Spin size="large" tip="加载中..." />
+        </div>
+      }>
+        <PageComponent />
+      </Suspense>
+    );
   };
 
   if (loading) {

@@ -9,6 +9,7 @@ import asyncio
 from database import get_db
 from models import Account, DownloadHistory, FilterRule, Downloader, beijing_now
 from services.downloader import get_downloading_count, get_incomplete_torrents, get_seeding_count, get_server_stats
+from utils.cache import cached, cache_key_with_params
 
 router = APIRouter(prefix="/dashboard", tags=["仪表盘"])
 
@@ -69,16 +70,24 @@ class DashboardData(BaseModel):
     download_trends: Dict[str, int]  # 按日期统计的下载趋势
 
 @router.get("/", response_model=DashboardData)
+@cached(ttl=60)  # 缓存 60 秒
 async def get_dashboard_data(db: Session = Depends(get_db)):
     """获取仪表盘数据"""
     
-    # 系统统计
-    total_accounts = db.query(Account).count()
-    active_accounts = db.query(Account).filter(Account.is_active == True).count()
-    total_rules = db.query(FilterRule).count()
-    active_rules = db.query(FilterRule).filter(FilterRule.is_enabled == True).count()
-    total_downloaders = db.query(Downloader).count()
-    active_downloaders = db.query(Downloader).filter(Downloader.is_active == True).count()
+    # 优化：使用单个查询获取所有统计数据
+    from sqlalchemy import func, case
+    
+    # 系统统计 - 合并查询
+    stats_query = db.query(
+        func.count(Account.id).label('total_accounts'),
+        func.sum(case((Account.is_active == True, 1), else_=0)).label('active_accounts'),
+        func.count(FilterRule.id).label('total_rules'),
+        func.sum(case((FilterRule.is_enabled == True, 1), else_=0)).label('active_rules'),
+        func.count(Downloader.id).label('total_downloaders'),
+        func.sum(case((Downloader.is_active == True, 1), else_=0)).label('active_downloaders')
+    ).select_from(Account).outerjoin(FilterRule).outerjoin(Downloader).first()
+    
+    # 下载历史统计
     total_downloads = db.query(DownloadHistory).count()
     
     # 最近24小时下载数
@@ -88,12 +97,12 @@ async def get_dashboard_data(db: Session = Depends(get_db)):
     ).count()
     
     system_stats = SystemStats(
-        total_accounts=total_accounts,
-        active_accounts=active_accounts,
-        total_rules=total_rules,
-        active_rules=active_rules,
-        total_downloaders=total_downloaders,
-        active_downloaders=active_downloaders,
+        total_accounts=stats_query.total_accounts or 0,
+        active_accounts=stats_query.active_accounts or 0,
+        total_rules=stats_query.total_rules or 0,
+        active_rules=stats_query.active_rules or 0,
+        total_downloaders=stats_query.total_downloaders or 0,
+        active_downloaders=stats_query.active_downloaders or 0,
         total_downloads=total_downloads,
         recent_downloads=recent_downloads
     )
@@ -113,8 +122,24 @@ async def get_dashboard_data(db: Session = Depends(get_db)):
         ) for acc in accounts
     ]
     
-    # 下载器统计 - 快速返回基础信息，异步获取详细状态
+    # 下载器统计 - 仅返回基础信息，不连接下载器（提升速度）
     downloaders = db.query(Downloader).all()
+    downloader_stats = [
+        DownloaderStats(
+            id=d.id,
+            name=d.name,
+            type=d.type,
+            downloading_count=0,
+            seeding_count=0,
+            incomplete_torrents=[],
+            is_active=d.is_active,
+            download_speed=0,
+            upload_speed=0,
+            connection_status="需要刷新" if d.is_active else "离线",
+            free_space_gb=0,
+            free_space_bytes=0
+        ) for d in downloaders
+    ]
     
     def create_basic_downloader_stats(downloader) -> DownloaderStats:
         """创建基础下载器统计信息（不连接下载器）"""
@@ -299,3 +324,90 @@ async def get_account_detailed_stats(account_id: int, db: Session = Depends(get_
             "double_upload": double_upload_downloads
         }
     }
+
+@router.get("/downloader-stats", response_model=List[DownloaderStats])
+@cached(ttl=30)  # 缓存 30 秒
+async def get_downloader_stats(db: Session = Depends(get_db)):
+    """获取下载器详细状态（单独接口，避免阻塞主仪表盘）"""
+    downloaders = db.query(Downloader).all()
+    
+    def create_basic_downloader_stats(downloader) -> DownloaderStats:
+        """创建基础下载器统计信息（不连接下载器）"""
+        return DownloaderStats(
+            id=downloader.id,
+            name=downloader.name,
+            type=downloader.type,
+            downloading_count=0,
+            seeding_count=0,
+            incomplete_torrents=[],
+            is_active=downloader.is_active,
+            download_speed=0,
+            upload_speed=0,
+            connection_status="检查中" if downloader.is_active else "离线",
+            free_space_gb=0,
+            free_space_bytes=0
+        )
+    
+    async def fetch_downloader_stats_safe(downloader) -> DownloaderStats:
+        """安全获取单个下载器状态，超时或失败时返回基础信息"""
+        basic_stats = create_basic_downloader_stats(downloader)
+        
+        if not downloader.is_active:
+            return basic_stats
+        
+        try:
+            # 使用 5 秒超时时间
+            downloading_count, seeding_count, incomplete_torrents, server_stats = await asyncio.wait_for(
+                asyncio.gather(
+                    get_downloading_count(downloader),
+                    get_seeding_count(downloader),
+                    get_incomplete_torrents(downloader),
+                    get_server_stats(downloader),
+                    return_exceptions=True
+                ),
+                timeout=5.0
+            )
+            
+            # 检查是否有异常
+            if isinstance(downloading_count, Exception):
+                downloading_count = 0
+            if isinstance(seeding_count, Exception):
+                seeding_count = 0
+            if isinstance(incomplete_torrents, Exception):
+                incomplete_torrents = []
+            if isinstance(server_stats, Exception):
+                server_stats = {}
+            
+            # 更新统计信息
+            basic_stats.downloading_count = downloading_count
+            basic_stats.seeding_count = seeding_count
+            basic_stats.incomplete_torrents = incomplete_torrents[:5]  # 只返回前5个
+            basic_stats.connection_status = "在线"
+            
+            # 服务器统计信息
+            if server_stats:
+                basic_stats.download_speed = server_stats.get('dl_info_speed', 0)
+                basic_stats.upload_speed = server_stats.get('up_info_speed', 0)
+                basic_stats.free_space_bytes = server_stats.get('free_space_on_disk', 0)
+                basic_stats.free_space_gb = basic_stats.free_space_bytes / (1024**3)
+            
+            return basic_stats
+            
+        except asyncio.TimeoutError:
+            basic_stats.connection_status = "超时"
+            return basic_stats
+        except Exception as e:
+            basic_stats.connection_status = f"错误: {str(e)[:20]}"
+            return basic_stats
+    
+    # 并发获取所有下载器状态
+    downloader_stats = await asyncio.gather(
+        *[fetch_downloader_stats_safe(d) for d in downloaders],
+        return_exceptions=True
+    )
+    
+    # 过滤掉异常
+    return [
+        stats for stats in downloader_stats 
+        if isinstance(stats, DownloaderStats)
+    ]

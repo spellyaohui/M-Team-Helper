@@ -170,12 +170,46 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!data) return;
 
-    const downloaderInterval = setInterval(fetchDownloaderStats, 15000);
-    const dashboardInterval = setInterval(fetchDashboardData, 60000);
+    let downloaderInterval: number;
+    let dashboardInterval: number;
+    
+    const startAutoRefresh = () => {
+      // 优化：增加下载器状态刷新间隔，从 15 秒改为 30 秒
+      downloaderInterval = setInterval(() => {
+        if (!document.hidden) {  // 仅在页面可见时刷新
+          fetchDownloaderStats();
+        }
+      }, 30000);
+      
+      // 仪表板数据刷新间隔从 60 秒改为 120 秒
+      dashboardInterval = setInterval(() => {
+        if (!document.hidden) {  // 仅在页面可见时刷新
+          fetchDashboardData();
+        }
+      }, 120000);
+    };
+    
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        // 页面不可见时清除定时器
+        if (downloaderInterval) clearInterval(downloaderInterval);
+        if (dashboardInterval) clearInterval(dashboardInterval);
+      } else {
+        // 页面可见时重新开始刷新
+        startAutoRefresh();
+      }
+    };
+    
+    // 监听页面可见性变化
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    // 初始启动
+    startAutoRefresh();
     
     return () => {
-      clearInterval(downloaderInterval);
-      clearInterval(dashboardInterval);
+      if (downloaderInterval) clearInterval(downloaderInterval);
+      if (dashboardInterval) clearInterval(dashboardInterval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [data]);
 

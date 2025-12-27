@@ -3,6 +3,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
@@ -17,6 +18,9 @@ app = FastAPI(
     description="M-Team PT 助手 API",
     version="1.0.0"
 )
+
+# 添加 Gzip 压缩中间件（提升 API 响应性能）
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 # CORS 配置（开发时可能仍需要）
 app.add_middleware(

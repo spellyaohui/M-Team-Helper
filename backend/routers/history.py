@@ -4,12 +4,14 @@ from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
 import os
+import time
 
 from database import get_db
 from models import DownloadHistory, Account, Downloader, FilterRule, beijing_now
 from services.scheduler import check_expired_torrents
 from services.downloader import get_torrent_info_with_tags, add_torrent, get_tags, create_tags
 from config import TORRENT_DIR
+from utils.cache import cached, cache_key_with_params
 
 router = APIRouter(prefix="/history", tags=["下载历史"])
 
@@ -47,15 +49,18 @@ class TorrentStatusResponse(BaseModel):
     torrent_tags: List[str]
     should_delete: bool
 
-@router.get("/", response_model=HistoryListResponse)
-async def list_history(
-    account_id: Optional[int] = None,
-    status: Optional[str] = None,
-    page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
-    db: Session = Depends(get_db)
-):
-    """获取下载历史"""
+def get_history_count(db: Session, account_id: Optional[int] = None, status: Optional[str] = None) -> int:
+    """获取历史记录总数（带缓存）"""
+    # 生成缓存键
+    cache_key = f"history_count:{account_id}:{status}"
+    
+    # 尝试从缓存获取
+    from utils.cache import cache
+    cached_result = cache.get(cache_key)
+    if cached_result is not None:
+        return cached_result
+    
+    # 缓存未命中，执行查询
     query = db.query(DownloadHistory)
     
     if account_id:
@@ -63,11 +68,70 @@ async def list_history(
     if status:
         query = query.filter(DownloadHistory.status == status)
     
-    total = query.count()
-    items = query.order_by(DownloadHistory.created_at.desc())\
-        .offset((page - 1) * page_size)\
-        .limit(page_size)\
-        .all()
+    result = query.count()
+    
+    # 存入缓存（30秒）
+    cache.set(cache_key, result, 30)
+    
+    return result
+
+@router.get("/", response_model=HistoryListResponse)
+async def list_history(
+    account_id: Optional[int] = None,
+    status: Optional[str] = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),  # 默认从 20 改为 50，最大 200
+    db: Session = Depends(get_db)
+):
+    """获取下载历史"""
+    start_time = time.time()
+    
+    # 构建基础查询
+    query = db.query(DownloadHistory)
+    
+    # 应用过滤条件
+    if account_id:
+        query = query.filter(DownloadHistory.account_id == account_id)
+    if status:
+        query = query.filter(DownloadHistory.status == status)
+    
+    # 使用缓存的总数查询
+    count_start = time.time()
+    total = get_history_count(db, account_id, status)
+    count_time = (time.time() - count_start) * 1000
+    
+    # 计算偏移量
+    offset = (page - 1) * page_size
+    
+    # 对于大偏移量，使用基于 ID 的分页优化查询性能
+    if offset > 100 and total > 100:
+        # 先获取起始位置的记录
+        cursor_query = query.order_by(DownloadHistory.created_at.desc(), DownloadHistory.id.desc())\
+            .offset(offset)\
+            .limit(1)
+        cursor_result = cursor_query.first()
+        
+        if cursor_result:
+            # 使用基于时间和 ID 的查询（性能更好）
+            items = query.filter(
+                (DownloadHistory.created_at < cursor_result.created_at) |
+                ((DownloadHistory.created_at == cursor_result.created_at) & 
+                 (DownloadHistory.id <= cursor_result.id))
+            ).order_by(DownloadHistory.created_at.desc(), DownloadHistory.id.desc())\
+            .limit(page_size)\
+            .all()
+        else:
+            items = []
+    else:
+        # 对于小偏移量或小数据集，使用传统分页
+        items = query.order_by(DownloadHistory.created_at.desc())\
+            .offset(offset)\
+            .limit(page_size)\
+            .all()
+    
+    total_time = (time.time() - start_time) * 1000
+    
+    print(f"[History] 第{page}页查询性能: 总耗时={total_time:.2f}ms, 计数={count_time:.2f}ms, 记录数={len(items)}, 总数={total}")
     
     return HistoryListResponse(total=total, data=items)
 
@@ -408,59 +472,88 @@ async def sync_download_status(
             db.commit()
             print(f"[Import] 导入完成，新增 {imported_count} 条记录")
     
-    # 同步状态
-    records = db.query(DownloadHistory).filter(
+    # 同步状态 - 优化：使用 JOIN 查询避免 N+1 问题
+    from sqlalchemy.orm import joinedload
+    
+    records = db.query(DownloadHistory).options(
+        joinedload(DownloadHistory.account)  # 预加载关联数据
+    ).filter(
         DownloadHistory.info_hash != None,
         DownloadHistory.downloader_id != None,
-        DownloadHistory.status.notin_(["failed", "expired_deleted"])
+        DownloadHistory.status.notin_(["failed", "expired_deleted", "dynamic_deleted"])
     ).all()
+    
+    # 按下载器分组，减少下载器查询次数
+    downloader_cache = {}
+    records_by_downloader = {}
+    
+    for record in records:
+        if record.downloader_id not in downloader_cache:
+            downloader = db.query(Downloader).filter(Downloader.id == record.downloader_id).first()
+            downloader_cache[record.downloader_id] = downloader
+        
+        if record.downloader_id not in records_by_downloader:
+            records_by_downloader[record.downloader_id] = []
+        records_by_downloader[record.downloader_id].append(record)
     
     updated_count = 0
     
-    for record in records:
-        downloader = db.query(Downloader).filter(Downloader.id == record.downloader_id).first()
+    # 按下载器批量处理
+    for downloader_id, downloader_records in records_by_downloader.items():
+        downloader = downloader_cache.get(downloader_id)
         if not downloader:
             continue
-            
+        
         try:
-            torrent_info = await get_torrent_info_with_tags(downloader, record.info_hash)
+            # 批量获取该下载器的所有种子信息
+            all_torrents = await get_all_torrents_with_details(downloader)
+            torrent_info_map = {t.get("hash", "").lower(): t for t in all_torrents}
             
-            if torrent_info is None:
-                if record.status != "deleted":
-                    record.status = "deleted"
-                    updated_count += 1
-            else:
-                progress = torrent_info.get("progress", 0)
-                qb_state = torrent_info.get("state", "")
-                
-                new_status = None
-                
-                if progress >= 100 or torrent_info.get("is_completed", False):
-                    if qb_state in ["uploading", "stalledUP", "queuedUP"]:
-                        new_status = "seeding"
+            # 批量更新该下载器的所有记录
+            for record in downloader_records:
+                try:
+                    torrent_info = torrent_info_map.get(record.info_hash.lower() if record.info_hash else "")
+                    
+                    if torrent_info is None:
+                        if record.status != "deleted":
+                            record.status = "deleted"
+                            updated_count += 1
                     else:
-                        new_status = "completed"
-                elif progress > 0:
-                    if qb_state in ["downloading", "stalledDL", "queuedDL", "metaDL"]:
-                        new_status = "downloading"
-                    elif qb_state == "pausedDL":
-                        new_status = "paused"
-                    else:
-                        new_status = "downloading"
-                else:
-                    if qb_state == "pausedDL":
-                        new_status = "paused"
-                    elif qb_state in ["queuedDL", "allocating"]:
-                        new_status = "queued"
-                    else:
-                        new_status = "downloading"
-                
-                if new_status and record.status != new_status:
-                    record.status = new_status
-                    updated_count += 1
+                        progress = torrent_info.get("progress", 0)
+                        qb_state = torrent_info.get("state", "")
+                        
+                        new_status = None
+                        
+                        if progress >= 100 or torrent_info.get("is_completed", False):
+                            if qb_state in ["uploading", "stalledUP", "queuedUP", "forcedUP"]:
+                                new_status = "seeding"
+                            else:
+                                new_status = "completed"
+                        elif progress > 0:
+                            if qb_state in ["downloading", "stalledDL", "queuedDL", "metaDL", "forcedDL"]:
+                                new_status = "downloading"
+                            elif qb_state == "pausedDL":
+                                new_status = "paused"
+                            else:
+                                new_status = "downloading"
+                        else:
+                            if qb_state == "pausedDL":
+                                new_status = "paused"
+                            elif qb_state in ["queuedDL", "allocating"]:
+                                new_status = "queued"
+                            else:
+                                new_status = "downloading"
+                        
+                        if new_status and record.status != new_status:
+                            record.status = new_status
+                            updated_count += 1
+                            
+                except Exception as e:
+                    print(f"[History] 同步种子状态失败 {record.torrent_name}: {e}")
+                    continue
                     
         except Exception as e:
-            print(f"[History] 同步种子状态失败 {record.torrent_name}: {e}")
+            print(f"[History] 获取下载器 {downloader.name} 种子列表失败: {e}")
             continue
     
     db.commit()

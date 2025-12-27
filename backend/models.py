@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, Float, DateTime, ForeignKey, Text, JSON
+from sqlalchemy import Column, Integer, String, Boolean, Float, DateTime, ForeignKey, Text, JSON, Index
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone, timedelta
 from database import Base
@@ -102,20 +102,27 @@ class DownloadHistory(Base):
     __tablename__ = "download_history"
     
     id = Column(Integer, primary_key=True, index=True)
-    account_id = Column(Integer, ForeignKey("accounts.id"))
-    torrent_id = Column(String(50))  # PT站种子ID
+    account_id = Column(Integer, ForeignKey("accounts.id"), index=True)  # 添加索引
+    torrent_id = Column(String(50), index=True)  # 添加索引
     torrent_name = Column(String(500))
     torrent_size = Column(Float)  # bytes
     rule_id = Column(Integer, ForeignKey("filter_rules.id"), nullable=True)
-    downloader_id = Column(Integer, ForeignKey("downloaders.id"), nullable=True)
-    status = Column(String(20), default="pending")  # pending/downloading/completed/failed/expired_deleted
+    downloader_id = Column(Integer, ForeignKey("downloaders.id"), nullable=True, index=True)  # 添加索引
+    status = Column(String(20), default="pending", index=True)  # 添加索引
     
     # 促销相关
-    info_hash = Column(String(64), nullable=True)  # 种子哈希，用于在下载器中定位
+    info_hash = Column(String(64), nullable=True, index=True)  # 添加索引，用于查找特定种子
     discount_type = Column(String(20), nullable=True)  # 促销类型：FREE, _2X_FREE 等
-    discount_end_time = Column(DateTime, nullable=True)  # 促销到期时间
+    discount_end_time = Column(DateTime, nullable=True, index=True)  # 添加索引，用于过期检查
     
-    created_at = Column(DateTime, default=beijing_now)
+    created_at = Column(DateTime, default=beijing_now, index=True)  # 添加索引，用于排序
     
     account = relationship("Account", back_populates="downloads")
+    
+    # 添加复合索引，优化常见查询
+    __table_args__ = (
+        Index('idx_account_created', 'account_id', 'created_at'),  # 按账号和时间查询
+        Index('idx_status_created', 'status', 'created_at'),       # 按状态和时间查询
+        Index('idx_downloader_status', 'downloader_id', 'status'), # 同步状态时使用
+    )
     downloader = relationship("Downloader")
