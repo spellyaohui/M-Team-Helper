@@ -437,6 +437,17 @@ npm run build
 ### 前端
 - React 19、TypeScript 5、Ant Design 5、Vite 7
 
+## 💡 定制开发
+
+如果您对本项目感兴趣，或有特殊的功能需求，欢迎联系作者进行定制开发：
+
+- 针对您的使用场景定制专属功能
+- 对接其他 PT 站点或下载器
+- 企业级部署方案咨询
+- 其他个性化需求
+
+📧 联系方式：请通过 [GitHub Issues](https://github.com/spellyaohui/M-Team-Helper/issues) 或邮件联系作者
+
 ## 🌟 Star History
 
 如果这个项目对你有帮助，请给一个 ⭐ Star 支持一下！
