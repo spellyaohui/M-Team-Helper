@@ -445,6 +445,13 @@ npm run build
 
 ---
 
+## 💬 联系作者
+
+这是个人开发的开源项目，如果你有特殊需求或想要定制功能，欢迎联系我！
+
+- GitHub: [@spellyaohui](https://github.com/spellyaohui)
+- 邮箱: spellyaohui@gmail.com
+
 **Made with ❤️ by [spellyaohui](https://github.com/spellyaohui)**
 
 ## License
