@@ -122,7 +122,7 @@ async def get_dashboard_data(db: Session = Depends(get_db)):
         ) for acc in accounts
     ]
     
-    # 下载器统计 - 仅返回基础信息，不连接下载器（提升速度）
+    # 下载器统计 - 仅返回基础信息，不连接下载器（避免首屏阻塞）
     downloaders = db.query(Downloader).all()
     downloader_stats = [
         DownloaderStats(
@@ -139,98 +139,6 @@ async def get_dashboard_data(db: Session = Depends(get_db)):
             free_space_gb=0,
             free_space_bytes=0
         ) for d in downloaders
-    ]
-    
-    def create_basic_downloader_stats(downloader) -> DownloaderStats:
-        """创建基础下载器统计信息（不连接下载器）"""
-        return DownloaderStats(
-            id=downloader.id,
-            name=downloader.name,
-            type=downloader.type,
-            downloading_count=0,
-            seeding_count=0,
-            incomplete_torrents=[],
-            is_active=downloader.is_active,
-            download_speed=0,
-            upload_speed=0,
-            connection_status="checking" if downloader.is_active else "offline",
-            free_space_gb=0,
-            free_space_bytes=0
-        )
-    
-    async def fetch_downloader_stats_safe(downloader) -> DownloaderStats:
-        """安全获取单个下载器状态，超时或失败时返回基础信息"""
-        basic_stats = create_basic_downloader_stats(downloader)
-        
-        if not downloader.is_active:
-            return basic_stats
-        
-        try:
-            # 使用更短的超时时间（2秒）
-            downloading_count, seeding_count, incomplete_torrents, server_stats = await asyncio.wait_for(
-                asyncio.gather(
-                    get_downloading_count(downloader),
-                    get_seeding_count(downloader),
-                    get_incomplete_torrents(downloader),
-                    get_server_stats(downloader),
-                    return_exceptions=True  # 不让单个异常影响其他任务
-                ),
-                timeout=2.0
-            )
-            
-            # 检查是否有异常，并正确处理
-            has_error = False
-            if isinstance(downloading_count, Exception):
-                downloading_count = 0
-                has_error = True
-            if isinstance(seeding_count, Exception):
-                seeding_count = 0
-                has_error = True
-            if isinstance(incomplete_torrents, Exception):
-                incomplete_torrents = []
-                has_error = True
-            if isinstance(server_stats, Exception):
-                server_stats = None
-                has_error = True
-            
-            # 更新统计信息
-            basic_stats.downloading_count = downloading_count
-            basic_stats.seeding_count = seeding_count
-            basic_stats.incomplete_torrents = incomplete_torrents
-            
-            # 从服务器统计信息中提取速度数据
-            if server_stats and not isinstance(server_stats, Exception):
-                basic_stats.download_speed = server_stats.get("dl_info_speed", 0)
-                basic_stats.upload_speed = server_stats.get("up_info_speed", 0)
-                basic_stats.connection_status = server_stats.get("connection_status", "connected")
-                basic_stats.free_space_gb = server_stats.get("free_space_gb", 0)
-                basic_stats.free_space_bytes = server_stats.get("free_space_bytes", 0)
-            elif has_error:
-                # 如果有任何操作失败，标记为错误状态
-                basic_stats.connection_status = "error"
-            else:
-                basic_stats.connection_status = "connected"
-                
-        except asyncio.TimeoutError:
-            print(f"[Dashboard] 获取下载器 {downloader.name} 数据超时（2秒）")
-            basic_stats.connection_status = "timeout"
-        except Exception as e:
-            print(f"[Dashboard] 获取下载器 {downloader.name} 数据失败: {e}")
-            basic_stats.connection_status = "error"
-        
-        return basic_stats
-    
-    # 使用 asyncio.gather 并发获取，但设置 return_exceptions=True
-    # 这样即使某个下载器失败，也不会影响其他下载器和整个接口
-    downloader_stats = await asyncio.gather(
-        *[fetch_downloader_stats_safe(d) for d in downloaders],
-        return_exceptions=True
-    )
-    
-    # 过滤掉异常，确保返回的都是有效的 DownloaderStats 对象
-    downloader_stats = [
-        stats for stats in downloader_stats 
-        if isinstance(stats, DownloaderStats)
     ]
     
     # 最近活动（最近10条下载记录）

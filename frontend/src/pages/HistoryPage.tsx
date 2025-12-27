@@ -20,6 +20,8 @@ interface History {
   created_at: string;
 }
 
+const PAGE_SIZE = 20;
+
 const formatBytes = (bytes: number) => {
   if (bytes === 0) return '0 B';
   const k = 1024;
@@ -66,6 +68,7 @@ export default function HistoryPage() {
   const [availableTags, setAvailableTags] = useState<string[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(PAGE_SIZE);
   const [uploadForm] = Form.useForm();
 
   useEffect(() => {
@@ -73,18 +76,18 @@ export default function HistoryPage() {
     downloaderApi.list().then(res => setDownloaders(res.data));
   }, []);
 
-  const fetchHistory = async (p = page, accId = accountId, pageSize = 50) => {
+  const fetchHistory = async (p = page, accId = accountId, pageSizeParam = pageSize) => {
     // 防抖：如果正在加载，直接返回
     if (loading) {
       console.log('[History] 正在加载中，跳过重复请求');
       return;
     }
     
-    console.log(`[History] 开始获取历史记录: page=${p}, accountId=${accId}, pageSize=${pageSize}`);
+    console.log(`[History] 开始获取历史记录: page=${p}, accountId=${accId}, pageSize=${pageSizeParam}`);
     setLoading(true);
     
     try {
-      const res = await historyApi.list({ account_id: accId, page: p, page_size: pageSize });
+      const res = await historyApi.list({ account_id: accId, page: p, page_size: pageSizeParam });
       console.log(`[History] 获取成功: 总数=${res.data.total}, 当前页数据=${res.data.data.length}`);
       setHistory(res.data.data);
       setTotal(res.data.total);
@@ -103,6 +106,8 @@ export default function HistoryPage() {
   // 优化自动刷新：减少同步频率，避免影响用户操作
   useEffect(() => {
     let interval: number;
+    let idleId: number | null = null;
+    let idleTimeout: number | null = null;
     let lastSyncTime = 0;
     let isUserInteracting = false;
     
@@ -118,45 +123,61 @@ export default function HistoryPage() {
     // 添加用户交互监听器
     document.addEventListener('click', handleUserInteraction);
     document.addEventListener('keydown', handleUserInteraction);
-    
-    const startAutoRefresh = () => {
-      // 增加刷新间隔到 120 秒，减少服务器压力
-      interval = setInterval(async () => {
-        // 检查页面是否可见和用户是否在交互
+
+    const cancelIdleTasks = () => {
+      if (idleId && 'cancelIdleCallback' in window) {
+        (window as any).cancelIdleCallback(idleId);
+      }
+      if (idleTimeout) {
+        clearTimeout(idleTimeout);
+      }
+    };
+
+    const scheduleRefresh = () => {
+      cancelIdleTasks();
+
+      const task = async () => {
         if (document.hidden || isUserInteracting || loading) {
-          console.log('[History] 跳过自动刷新：页面不可见或用户正在交互或正在加载');
           return;
         }
-        
+
         const now = Date.now();
-        
+
         try {
           // 只有超过 5 分钟才执行状态同步，否则只刷新列表
           if (now - lastSyncTime > 300000) { // 5分钟
-            console.log('[History] 执行状态同步');
             await historyApi.syncStatus(false);
             lastSyncTime = now;
           }
-          
-          // 总是刷新列表（这个很快）
-          console.log('[History] 自动刷新列表');
-          fetchHistory(page, accountId);
+
+          await fetchHistory(page, accountId, pageSize);
         } catch (e) {
           console.error('自动刷新失败:', e);
         }
-      }, 120000); // 从 60 秒改为 120 秒
+      };
+
+      if ('requestIdleCallback' in window) {
+        idleId = (window as any).requestIdleCallback(task, { timeout: 60000 });
+      } else {
+        idleTimeout = window.setTimeout(task, 60000);
+      }
+    };
+
+    const startAutoRefresh = () => {
+      interval = window.setInterval(() => {
+        scheduleRefresh();
+      }, 120000); // 2 分钟调度一次，由浏览器空闲时真正执行
+      scheduleRefresh();
     };
     
     const handleVisibilityChange = () => {
       if (document.hidden) {
-        // 页面不可见时清除定时器
+        // 页面不可见时清除定时器与空闲任务
         if (interval) {
           clearInterval(interval);
-          console.log('[History] 页面不可见，停止自动刷新');
         }
+        cancelIdleTasks();
       } else {
-        // 页面可见时重新开始刷新
-        console.log('[History] 页面可见，开始自动刷新');
         startAutoRefresh();
       }
     };
@@ -171,11 +192,12 @@ export default function HistoryPage() {
       if (interval) {
         clearInterval(interval);
       }
+      cancelIdleTasks();
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       document.removeEventListener('click', handleUserInteraction);
       document.removeEventListener('keydown', handleUserInteraction);
     };
-  }, [page, accountId, loading]); // 添加 loading 依赖
+  }, [page, accountId, loading, pageSize]); // 添加 loading 依赖
 
   const handleDelete = async (id: number) => {
     try {
@@ -396,7 +418,7 @@ export default function HistoryPage() {
           placeholder="全部账号"
           allowClear
           value={accountId}
-          onChange={(v) => { setAccountId(v); setPage(1); fetchHistory(1, v); }}
+      onChange={(v) => { setAccountId(v); setPage(1); fetchHistory(1, v, pageSize); }}
           options={accounts.map(a => ({ value: a.id, label: a.username }))}
         />
         
@@ -443,6 +465,8 @@ export default function HistoryPage() {
       </div>
       
       <Table
+        virtual
+        scroll={{ y: 600 }}
         columns={columns}
         dataSource={history}
         rowKey="id"
@@ -450,26 +474,23 @@ export default function HistoryPage() {
         pagination={{
           current: page,
           total,
-          pageSize: 50,  // 默认 50 条
-          showSizeChanger: true,  // 允许用户改变页面大小
-          showQuickJumper: true,  // 显示快速跳转
+          pageSize,
+          showSizeChanger: true,
+          showQuickJumper: true,
           showTotal: (total, range) => `第 ${range[0]}-${range[1]} 条，共 ${total} 条`,
-          pageSizeOptions: ['20', '50', '100', '200'],  // 页面大小选项
+          pageSizeOptions: ['20', '50', '100', '200'],
           onChange: (p, size) => { 
-            console.log(`[History] 分页变化: page=${p}, size=${size}, current=${page}`);
-            // 防止重复请求相同页面
-            if (p !== page) {
+            if (p !== page || size !== pageSize) {
               setPage(p); 
+              setPageSize(size);
               fetchHistory(p, accountId, size);
-              // 滚动到表格顶部
               window.scrollTo({ top: 0, behavior: 'smooth' });
             }
           },
           onShowSizeChange: (current, size) => {
-            console.log(`[History] 页面大小变化: current=${current}, size=${size}`);
             setPage(1);
+            setPageSize(size);
             fetchHistory(1, accountId, size);
-            // 滚动到表格顶部
             window.scrollTo({ top: 0, behavior: 'smooth' });
           }
         }}
