@@ -17,6 +17,8 @@ ENV/
 
 # 数据文件（包含用户数据）
 backend/data/mteam.db
+backend/data/mteam.db-shm
+backend/data/mteam.db-wal
 backend/data/torrents/
 
 # 清空数据脚本（不上传到仓库）
