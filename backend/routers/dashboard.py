@@ -296,8 +296,8 @@ async def get_downloader_stats(db: Session = Depends(get_db)):
             if server_stats:
                 basic_stats.download_speed = server_stats.get('dl_info_speed', 0)
                 basic_stats.upload_speed = server_stats.get('up_info_speed', 0)
-                basic_stats.free_space_bytes = server_stats.get('free_space_on_disk', 0)
-                basic_stats.free_space_gb = basic_stats.free_space_bytes / (1024**3)
+                basic_stats.free_space_bytes = server_stats.get('free_space_bytes', 0)
+                basic_stats.free_space_gb = server_stats.get('free_space_gb', 0)
             
             return basic_stats
             
