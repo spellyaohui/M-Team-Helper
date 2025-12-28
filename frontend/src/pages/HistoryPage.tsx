@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Table, Button, Select, Tag, message, Popconfirm, Space, Tooltip, Modal, Upload, Form, Input } from 'antd';
 import { DeleteOutlined, ClearOutlined, SyncOutlined, InfoCircleOutlined, UploadOutlined, InboxOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
@@ -61,6 +61,7 @@ export default function HistoryPage() {
   const [downloaders, setDownloaders] = useState<any[]>([]);
   const [accountId, setAccountId] = useState<number | undefined>();
   const [loading, setLoading] = useState(false);
+  const loadingRef = useRef(false);
   const [syncing, setSyncing] = useState(false);
   const [clearingDeleted, setClearingDeleted] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -78,12 +79,13 @@ export default function HistoryPage() {
 
   const fetchHistory = async (p = page, accId = accountId, pageSizeParam = pageSize) => {
     // 防抖：如果正在加载，直接返回
-    if (loading) {
+    if (loadingRef.current) {
       console.log('[History] 正在加载中，跳过重复请求');
       return;
     }
     
     console.log(`[History] 开始获取历史记录: page=${p}, accountId=${accId}, pageSize=${pageSizeParam}`);
+    loadingRef.current = true;
     setLoading(true);
     
     try {
@@ -95,6 +97,7 @@ export default function HistoryPage() {
       console.error('[History] 获取历史记录失败:', e);
       message.error('获取历史记录失败');
     } finally {
+      loadingRef.current = false;
       setLoading(false);
     }
   };
@@ -108,7 +111,7 @@ export default function HistoryPage() {
     let interval: number;
     let idleId: number | null = null;
     let idleTimeout: number | null = null;
-    let lastSyncTime = 0;
+    let lastSyncTime = Date.now();
     let isUserInteracting = false;
     
     // 监听用户交互
@@ -137,7 +140,7 @@ export default function HistoryPage() {
       cancelIdleTasks();
 
       const task = async () => {
-        if (document.hidden || isUserInteracting || loading) {
+        if (document.hidden || isUserInteracting || loadingRef.current) {
           return;
         }
 
@@ -159,11 +162,16 @@ export default function HistoryPage() {
       if ('requestIdleCallback' in window) {
         idleId = (window as any).requestIdleCallback(task, { timeout: 60000 });
       } else {
-        idleTimeout = window.setTimeout(task, 60000);
+        idleTimeout = (window as any).setTimeout(task, 60000);
       }
     };
 
     const startAutoRefresh = () => {
+      // 先清除已存在的定时器
+      if (interval) {
+        clearInterval(interval);
+      }
+      
       interval = window.setInterval(() => {
         scheduleRefresh();
       }, 120000); // 2 分钟调度一次，由浏览器空闲时真正执行
@@ -197,7 +205,7 @@ export default function HistoryPage() {
       document.removeEventListener('click', handleUserInteraction);
       document.removeEventListener('keydown', handleUserInteraction);
     };
-  }, [page, accountId, loading, pageSize]); // 添加 loading 依赖
+  }, [page, accountId, pageSize]);
 
   const handleDelete = async (id: number) => {
     try {
@@ -487,7 +495,7 @@ export default function HistoryPage() {
               window.scrollTo({ top: 0, behavior: 'smooth' });
             }
           },
-          onShowSizeChange: (current, size) => {
+          onShowSizeChange: (_, size) => {
             setPage(1);
             setPageSize(size);
             fetchHistory(1, accountId, size);

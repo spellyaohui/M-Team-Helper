@@ -148,15 +148,14 @@ sudo bash /opt/mteam-helper/deploy.sh uninstall
 ```bash
 # 克隆项目
 git clone https://github.com/spellyaohui/M-Team-Helper.git
-cd M-Team-Helper
+cd M-Team-Helper/mteam-helper
 
 # 构建前端
-cd mteam-helper/frontend
-npm install
+npm run install:frontend
 npm run build
 
 # 配置并启动后端
-cd ../backend
+cd backend
 python -m pip install -r requirements.txt
 cp .env.example .env
 # 编辑 .env 文件

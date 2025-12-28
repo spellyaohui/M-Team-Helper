@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Row, Col, Card, Table, Tag, List, Avatar, Spin, message, theme, Tooltip, Progress } from 'antd';
 import { 
   UserOutlined, 
@@ -134,13 +134,16 @@ export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [downloadersLoading, setDownloadersLoading] = useState(false);
+  const hasLoadedRef = useRef(false);
 
   const fetchDashboardData = async () => {
     // 首次加载显示 loading，后续静默更新
-    if (!data) setLoading(true);
+    if (!hasLoadedRef.current) setLoading(true);
     try {
       const res = await dashboardApi.getDashboardData();
       setData(res.data);
+      hasLoadedRef.current = true;
+      fetchDownloaderStats();
     } catch (e) {
       message.error('获取仪表盘数据失败');
     }
@@ -148,19 +151,22 @@ export default function DashboardPage() {
   };
 
   const fetchDownloaderStats = async () => {
-    if (!data) return;
-    
     setDownloadersLoading(true);
     try {
       const res = await dashboardApi.getDownloaderStats();
-      setData(prevData => ({
-        ...prevData!,
-        downloader_stats: res.data.downloader_stats
-      }));
+      const nextDownloaderStats = Array.isArray(res.data)
+        ? res.data
+        : (res.data?.downloader_stats ?? []);
+      setData(prevData => (
+        prevData
+          ? { ...prevData, downloader_stats: nextDownloaderStats }
+          : prevData
+      ));
     } catch (e) {
       console.error('获取下载器状态失败', e);
+    } finally {
+      setDownloadersLoading(false);
     }
-    setDownloadersLoading(false);
   };
 
   useEffect(() => {
@@ -168,12 +174,13 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
-    if (!data) return;
-
     let downloaderInterval: number;
     let dashboardInterval: number;
     
     const startAutoRefresh = () => {
+      if (!document.hidden) {
+        fetchDownloaderStats();
+      }
       // 优化：增加下载器状态刷新间隔，从 15 秒改为 30 秒
       downloaderInterval = setInterval(() => {
         if (!document.hidden) {  // 仅在页面可见时刷新
@@ -211,7 +218,7 @@ export default function DashboardPage() {
       if (dashboardInterval) clearInterval(dashboardInterval);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [data]);
+  }, []);
 
   if (loading && !data) {
     return (
