@@ -337,7 +337,7 @@ async def auto_download_torrents():
                         except Exception as e:
                             print(f"[Scheduler] 解析促销到期时间失败: {e}")
                     
-                    # 记录下载历史
+                    # 记录下载历史（包含封面图片）
                     history = DownloadHistory(
                         account_id=account.id,
                         torrent_id=torrent["id"],
@@ -348,7 +348,8 @@ async def auto_download_torrents():
                         status=status,
                         info_hash=info_hash,
                         discount_type=torrent.get("discount"),
-                        discount_end_time=discount_end_time
+                        discount_end_time=discount_end_time,
+                        images=torrent.get("images")  # 保存封面图片 URL
                     )
                     db.add(history)
                     db.commit()

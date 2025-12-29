@@ -115,6 +115,9 @@ class DownloadHistory(Base):
     discount_type = Column(String(20), nullable=True)  # 促销类型：FREE, _2X_FREE 等
     discount_end_time = Column(DateTime, nullable=True, index=True)  # 添加索引，用于过期检查
     
+    # 封面图片
+    images = Column(JSON, nullable=True)  # 种子封面图片 URL 列表
+    
     created_at = Column(DateTime, default=beijing_now, index=True)  # 添加索引，用于排序
     
     account = relationship("Account", back_populates="downloads")

@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from config import settings
 from database import init_db
@@ -13,11 +14,37 @@ from routers import accounts, downloaders, torrents, rules, history
 from routers.auth import router as auth_router
 from services.scheduler import start_scheduler, stop_scheduler
 
+# 前端静态文件目录（提前定义）
+_docker_frontend = Path("/app/frontend/dist")
+_dev_frontend = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+FRONTEND_DIR = _docker_frontend if _docker_frontend.exists() else _dev_frontend
+
+# API 路径前缀列表
+API_PREFIXES = ("/accounts", "/auth", "/downloaders", "/torrents", "/rules", "/history", "/settings", "/dashboard", "/health")
+
+class SPAMiddleware(BaseHTTPMiddleware):
+    """SPA 中间件：处理前端路由，返回 index.html"""
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        
+        # 如果是 404 且不是 API 请求，返回 index.html
+        if response.status_code == 404:
+            path = request.url.path
+            # 检查是否是 API 请求
+            is_api = any(path.startswith(prefix) for prefix in API_PREFIXES)
+            if not is_api and FRONTEND_DIR.exists():
+                return FileResponse(FRONTEND_DIR / "index.html")
+        
+        return response
+
 app = FastAPI(
     title=settings.APP_NAME,
     description="M-Team PT 助手 API",
     version="1.0.0"
 )
+
+# 添加 SPA 中间件（必须在其他中间件之前添加）
+app.add_middleware(SPAMiddleware)
 
 # 添加 Gzip 压缩中间件（提升 API 响应性能）
 app.add_middleware(GZipMiddleware, minimum_size=1000)
@@ -47,12 +74,6 @@ app.include_router(settings.router)
 from routers import dashboard
 app.include_router(dashboard.router)
 
-# 前端静态文件目录
-# 优先检查 Docker 环境路径，然后是开发环境路径
-_docker_frontend = Path("/app/frontend/dist")
-_dev_frontend = Path(__file__).resolve().parent.parent / "frontend" / "dist"
-FRONTEND_DIR = _docker_frontend if _docker_frontend.exists() else _dev_frontend
-
 @app.on_event("startup")
 async def startup():
     """启动时初始化数据库和定时任务"""
@@ -79,16 +100,10 @@ if FRONTEND_DIR.exists():
         """返回前端首页"""
         return FileResponse(FRONTEND_DIR / "index.html")
     
-    # 处理前端路由（SPA fallback）
-    @app.get("/{full_path:path}")
-    async def serve_spa(request: Request, full_path: str):
-        """处理所有非 API 请求，返回前端页面"""
-        # 尝试返回静态文件
-        file_path = FRONTEND_DIR / full_path
-        if file_path.exists() and file_path.is_file():
-            return FileResponse(file_path)
-        # 否则返回 index.html（SPA 路由）
-        return FileResponse(FRONTEND_DIR / "index.html")
+    # 静态文件（vite.svg 等）
+    @app.get("/vite.svg")
+    async def serve_vite_svg():
+        return FileResponse(FRONTEND_DIR / "vite.svg")
 
 if __name__ == "__main__":
     import uvicorn

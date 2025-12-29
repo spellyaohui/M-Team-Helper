@@ -27,6 +27,7 @@ class HistoryResponse(BaseModel):
     info_hash: Optional[str]
     discount_type: Optional[str]
     discount_end_time: Optional[datetime]
+    images: Optional[List[str]] = None  # 种子封面图片 URL 列表
     created_at: datetime
     
     class Config:
@@ -263,12 +264,13 @@ async def upload_torrent_file(
                 # 多文件种子
                 torrent_size = sum(f.get(b'length', 0) for f in info[b'files'])
             
-            # 如果有关联账号和种子ID，通过API查询促销信息
+            # 如果有关联账号和种子ID，通过API查询促销信息和图片
+            torrent_images = None
             if account_id and torrent_id:
                 account = db.query(Account).filter(Account.id == account_id).first()
                 if account and account.api_key:
                     try:
-                        from services.scraper import MTeamAPI
+                        from services.scraper import MTeamAPI, parse_torrent
                         api = MTeamAPI(account.api_key)
                         detail_result = await api.get_torrent_detail(torrent_id)
                         
@@ -292,7 +294,11 @@ async def upload_torrent_file(
                                 except Exception as e:
                                     print(f"[Upload] 解析促销到期时间失败: {e}")
                             
-                            print(f"[Upload] 查询到促销信息: {discount_type}, 到期时间: {discount_end_time}")
+                            # 获取封面图片
+                            parsed_torrent = parse_torrent(torrent_detail)
+                            torrent_images = parsed_torrent.get("images")
+                            
+                            print(f"[Upload] 查询到促销信息: {discount_type}, 到期时间: {discount_end_time}, 图片数: {len(torrent_images) if torrent_images else 0}")
                         else:
                             print(f"[Upload] 查询种子详情失败: {detail_result.get('error')}")
                     except Exception as e:
@@ -340,6 +346,7 @@ async def upload_torrent_file(
             info_hash=info_hash if info_hash != "unknown" else None,
             discount_type=discount_type,
             discount_end_time=discount_end_time,
+            images=torrent_images,  # 保存封面图片 URL
             created_at=beijing_now()
         )
         

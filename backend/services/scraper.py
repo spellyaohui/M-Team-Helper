@@ -20,11 +20,15 @@ class MTeamAPI:
         注意：M-Team API 要求用 data 参数传 JSON 字符串，而不是用 json 参数
         """
         import json
+        import time
         if data is None:
             data = {}
         
+        start_time = time.time()
+        print(f"[MTeamAPI] 请求开始: {endpoint}")
+        
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            async with httpx.AsyncClient(timeout=20.0) as client:  # 减少超时到 20 秒
                 if use_form:
                     headers = {**self.headers, "Content-Type": "application/x-www-form-urlencoded"}
                     response = await client.post(
@@ -59,8 +63,12 @@ class MTeamAPI:
                     return {"success": False, "error": f"API返回非JSON响应: {content_preview}"}
                 
                 if result.get("code") == "0":
+                    elapsed = time.time() - start_time
+                    print(f"[MTeamAPI] 请求成功: {endpoint}, 耗时: {elapsed:.2f}s")
                     return {"success": True, "data": result.get("data")}
                 else:
+                    elapsed = time.time() - start_time
+                    print(f"[MTeamAPI] 请求失败: {endpoint}, 耗时: {elapsed:.2f}s, 错误: {result.get('message')}")
                     return {"success": False, "error": result.get("message", "API请求失败")}
                     
         except httpx.TimeoutException:

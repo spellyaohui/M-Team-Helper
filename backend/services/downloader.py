@@ -313,14 +313,17 @@ async def get_downloading_count(downloader) -> int:
     """获取正在下载的种子数量
     
     Returns:
-        下载中的种子数量
+        下载中的种子数量（只统计真正在活跃下载的，排除停滞、暂停、排队等状态）
     """
     try:
         if downloader.type == "qbittorrent":
             client = _get_qb_client(downloader)
-            # 获取所有下载中的种子（包括暂停的下载任务）
+            # 获取所有下载中的种子
             torrents = client.torrents_info(status_filter="downloading")
-            return len(torrents)
+            # 只统计真正在活跃下载的种子（state == "downloading"）
+            # 排除 stalledDL（停滞）、pausedDL（暂停）、queuedDL（排队）等状态
+            active_downloading = [t for t in torrents if t.state == "downloading"]
+            return len(active_downloading)
         
         elif downloader.type == "transmission":
             client = _get_tr_client(downloader)

@@ -37,10 +37,16 @@ class TorrentResponse(BaseModel):
     completed: int
     discount: str
     discount_text: str
+    discount_end_time: Optional[str] = None
     is_free: bool
     is_2x: bool
     created_date: str
+    imdb: Optional[str] = None
+    imdb_rating: Optional[float] = None
+    douban: Optional[str] = None
+    douban_rating: Optional[float] = None
     labels: List[str]
+    images: List[str] = []
 
 class TorrentListResponse(BaseModel):
     success: bool
@@ -157,6 +163,102 @@ async def get_metadata(
     
     return {"success": True, "data": result_data}
 
+
+class PushDownloadRequest(BaseModel):
+    torrent_id: str
+    downloader_id: int
+    account_id: int
+    save_path: Optional[str] = None
+    tags: Optional[List[str]] = None
+
+
+@router.post("/push")
+async def push_to_downloader(
+    data: PushDownloadRequest,
+    db: Session = Depends(get_db)
+):
+    """推送种子到下载器"""
+    from services.downloader import add_torrent
+    from models import Downloader as DownloaderModel
+    
+    # 验证账号
+    account = db.query(Account).filter(Account.id == data.account_id).first()
+    if not account or not account.api_key:
+        raise HTTPException(status_code=404, detail="账号不存在或未配置")
+    
+    # 验证下载器
+    downloader = db.query(DownloaderModel).filter(DownloaderModel.id == data.downloader_id).first()
+    if not downloader:
+        raise HTTPException(status_code=404, detail="下载器不存在")
+    
+    if not downloader.is_active:
+        raise HTTPException(status_code=400, detail="下载器未激活")
+    
+    api = MTeamAPI(account.api_key)
+    
+    # 下载种子文件
+    torrent_content = await api.download_torrent(data.torrent_id)
+    if not torrent_content:
+        raise HTTPException(status_code=500, detail="下载种子文件失败")
+    
+    # 保存种子文件
+    torrent_path = TORRENT_DIR / f"{data.torrent_id}.torrent"
+    torrent_path.write_bytes(torrent_content)
+    
+    # 推送到下载器
+    info_hash = await add_torrent(
+        downloader,
+        str(torrent_path),
+        data.save_path,
+        data.tags
+    )
+    
+    if not info_hash:
+        raise HTTPException(status_code=500, detail="推送到下载器失败")
+    
+    # 获取种子详情用于记录历史
+    detail_result = await api.get_torrent_detail(data.torrent_id)
+    torrent_data = {}
+    if detail_result["success"]:
+        torrent_data = parse_torrent(detail_result["data"])
+    
+    # 解析促销到期时间
+    discount_end_time = None
+    if torrent_data.get("discount_end_time"):
+        try:
+            ts = torrent_data["discount_end_time"]
+            if isinstance(ts, (int, float)):
+                discount_end_time = datetime.fromtimestamp(ts / 1000 if ts > 1e10 else ts)
+            elif isinstance(ts, str):
+                discount_end_time = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        except Exception as e:
+            print(f"[Push] 解析促销到期时间失败: {e}")
+    
+    # 记录下载历史
+    history = DownloadHistory(
+        account_id=data.account_id,
+        torrent_id=data.torrent_id,
+        torrent_name=torrent_data.get("name", f"种子_{data.torrent_id}"),
+        torrent_size=torrent_data.get("size", 0),
+        rule_id=None,
+        downloader_id=data.downloader_id,
+        status="downloading",
+        info_hash=info_hash,
+        discount_type=torrent_data.get("discount"),
+        discount_end_time=discount_end_time,
+        images=torrent_data.get("images")
+    )
+    db.add(history)
+    db.commit()
+    
+    return {
+        "success": True,
+        "message": "推送成功",
+        "info_hash": info_hash,
+        "history_id": history.id
+    }
+
+
 @router.get("/{torrent_id}")
 async def get_torrent_detail(
     torrent_id: str,
@@ -174,7 +276,13 @@ async def get_torrent_detail(
     if not result["success"]:
         raise HTTPException(status_code=500, detail=result.get("error"))
     
-    return {"success": True, "data": result["data"]}
+    # 转换为统一格式
+    torrent_data = parse_torrent(result["data"])
+    # 添加详情特有字段
+    torrent_data["description"] = result["data"].get("descr", "")
+    torrent_data["mediainfo"] = result["data"].get("mediainfo", "")
+    
+    return {"success": True, "data": torrent_data}
 
 @router.post("/{torrent_id}/download")
 async def download_torrent(
