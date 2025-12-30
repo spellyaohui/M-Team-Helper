@@ -280,7 +280,7 @@ async def auto_download_torrents():
                         skip_rule_mismatch += 1
                         continue
                     
-                    # 检查下载队列限制（结合下载器实时状态和本次已推送数量）
+                    # 检查下载队列限制（在推送前检查，确保不会超过限制）
                     if rule.downloader_id and rule.max_downloading:
                         downloader = db.query(Downloader).filter(
                             Downloader.id == rule.downloader_id
@@ -288,11 +288,15 @@ async def auto_download_torrents():
                         
                         if downloader:
                             current_downloading = await get_downloading_count(downloader)
-                            # 加上本次已推送的数量，确保不会超过限制
+                            # 检查如果推送这个种子后是否会超过限制
+                            # 使用 pushed_count_this_run 跟踪本次任务已推送的数量
                             effective_downloading = current_downloading + pushed_count_this_run
                             if effective_downloading >= rule.max_downloading:
                                 logger.info(f"下载队列已满 ({current_downloading}+{pushed_count_this_run}/{rule.max_downloading})，停止处理更多种子")
                                 break  # 跳出种子循环，但继续处理下一个规则
+                    
+                    # 先增加计数，再推送（确保并发安全）
+                    pushed_count_this_run += 1
                     
                     logger.info(f"匹配规则 '{rule.name}': {torrent['name']}")
                     
@@ -324,9 +328,9 @@ async def auto_download_torrents():
                             status = "pushing" if info_hash else "push_failed"
                             logger.info(f"推送到下载器: {bool(info_hash)}, hash: {info_hash}")
                             
-                            # 推送成功，增加本次已推送计数
-                            if info_hash:
-                                pushed_count_this_run += 1
+                            # 如果推送失败，回退计数
+                            if not info_hash:
+                                pushed_count_this_run -= 1
                     
                     # 解析促销到期时间
                     discount_end_time = None
