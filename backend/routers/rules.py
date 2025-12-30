@@ -146,33 +146,53 @@ async def toggle_rule(rule_id: int, db: Session = Depends(get_db)):
     return {"success": True, "is_enabled": rule.is_enabled}
 
 
-def match_torrent(torrent: dict, rule: FilterRule) -> bool:
-    """检查种子是否匹配规则"""
+def match_torrent(torrent: dict, rule: FilterRule, debug: bool = False) -> bool:
+    """检查种子是否匹配规则
+    
+    Args:
+        torrent: 种子信息字典
+        rule: 筛选规则
+        debug: 是否输出调试信息
+    """
     # 免费检查
     if rule.free_only and not torrent.get("is_free"):
+        if debug:
+            print(f"  不匹配: 非免费 (is_free={torrent.get('is_free')})")
         return False
     
     # 2x上传检查
     if rule.double_upload and not torrent.get("is_2x"):
+        if debug:
+            print(f"  不匹配: 非2x上传 (is_2x={torrent.get('is_2x')})")
         return False
     
     # 大小检查 (GB)
     size_gb = torrent.get("size_gb", 0)
     if rule.min_size and size_gb < rule.min_size:
+        if debug:
+            print(f"  不匹配: 大小太小 ({size_gb} < {rule.min_size})")
         return False
     if rule.max_size and size_gb > rule.max_size:
+        if debug:
+            print(f"  不匹配: 大小太大 ({size_gb} > {rule.max_size})")
         return False
     
     # 做种数检查
     seeders = torrent.get("seeders", 0)
     if rule.min_seeders and seeders < rule.min_seeders:
+        if debug:
+            print(f"  不匹配: 做种数太少 ({seeders} < {rule.min_seeders})")
         return False
     if rule.max_seeders and seeders > rule.max_seeders:
+        if debug:
+            print(f"  不匹配: 做种数太多 ({seeders} > {rule.max_seeders})")
         return False
     
-    # 分类检查
-    if rule.categories:
+    # 分类检查（处理 'null' 字符串和空列表的情况）
+    if rule.categories and rule.categories != 'null' and rule.categories != ['null']:
         if torrent.get("category") not in rule.categories:
+            if debug:
+                print(f"  不匹配: 分类不符 ({torrent.get('category')} not in {rule.categories})")
             return False
     
     # 关键词检查
@@ -182,12 +202,16 @@ def match_torrent(torrent: dict, rule: FilterRule) -> bool:
     if rule.keywords:
         keywords = [k.strip().lower() for k in rule.keywords.split(",")]
         if not any(kw in name or kw in descr for kw in keywords):
+            if debug:
+                print(f"  不匹配: 关键词不符 (keywords={keywords})")
             return False
     
     # 排除关键词检查
     if rule.exclude_keywords:
         exclude = [k.strip().lower() for k in rule.exclude_keywords.split(",")]
         if any(kw in name or kw in descr for kw in exclude):
+            if debug:
+                print(f"  不匹配: 包含排除关键词 (exclude={exclude})")
             return False
     
     return True

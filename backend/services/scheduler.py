@@ -135,9 +135,8 @@ def is_task_allowed(task_name: str) -> bool:
     result = best_match["range"].get(task_name, True)
     
     # 调试日志
-    if len(matched_ranges) > 1:
-        logger.debug(f"时间 {now.strftime('%H:%M')} 匹配到 {len(matched_ranges)} 个时间段，"
-              f"选择最具体的 {best_match['start']}-{best_match['end']}，{task_name}={'允许' if result else '禁用'}")
+    logger.debug(f"时间 {now.strftime('%H:%M')} 匹配到 {len(matched_ranges)} 个时间段，"
+          f"选择最具体的 {best_match['start']}-{best_match['end']}（{best_match['duration']}分钟），{task_name}={'允许' if result else '禁用'}")
     
     return result
 
@@ -210,7 +209,7 @@ async def auto_download_torrents():
                         else:
                             logger.debug(f"规则 '{rule.name}' 下载队列状态: {current_downloading}/{rule.max_downloading}，继续检查种子")
                     except Exception as e:
-                        logger.error(f"检查下载器 {downloader.name} 队列状态失败: {e}")
+                        logger.error(f"规则 '{rule.name}' 检查下载器 {downloader.name} 队列状态失败: {e}，跳过此规则")
                         continue
                 else:
                     logger.warning(f"规则 '{rule.name}' 关联的下载器不存在，跳过")
@@ -226,7 +225,7 @@ async def auto_download_torrents():
                 elif rule.double_upload:
                     discount = "_2X"
                 
-                logger.debug(f"规则 '{rule.name}' 开始访问网站搜索种子")
+                logger.info(f"规则 '{rule.name}' 开始访问网站搜索种子，discount={discount}")
                 result = await api.search_torrents(
                     page=1,
                     page_size=50,
@@ -236,11 +235,11 @@ async def auto_download_torrents():
                 )
                 
                 if not result["success"]:
-                    logger.warning(f"规则 '{rule.name}' 搜索种子失败")
+                    logger.warning(f"规则 '{rule.name}' 搜索种子失败: {result.get('message', '未知错误')}")
                     continue
                 
                 torrents = [parse_torrent(t) for t in result["data"].get("data", [])]
-                logger.debug(f"规则 '{rule.name}' 获取到 {len(torrents)} 个种子")
+                logger.info(f"规则 '{rule.name}' 获取到 {len(torrents)} 个种子")
                 
                 # 批量查询这些种子在 M-Team 网站的下载历史
                 tracker_history = {}
@@ -250,10 +249,15 @@ async def auto_download_torrents():
                     if history_result["success"]:
                         tracker_history = history_result["data"].get("historyMap", {})
                         if tracker_history:
-                            logger.debug(f"规则 '{rule.name}' 查询到 {len(tracker_history)} 个种子有下载历史")
+                            logger.info(f"规则 '{rule.name}' 查询到 {len(tracker_history)} 个种子有网站下载历史")
                 
                 # 本次任务已推送的种子数量（用于精确控制下载数量）
                 pushed_count_this_run = 0
+                
+                # 统计过滤原因
+                skip_local_history = 0
+                skip_tracker_history = 0
+                skip_rule_mismatch = 0
                 
                 for torrent in torrents:
                     # 检查是否已在本地下载历史中
@@ -263,17 +267,17 @@ async def auto_download_torrents():
                     ).first()
                     
                     if existing:
+                        skip_local_history += 1
                         continue
                     
                     # 检查是否在 M-Team 网站有下载历史（曾经下载过）
                     if torrent["id"] in tracker_history:
-                        history_info = tracker_history[torrent["id"]]
-                        # 有下载历史记录，说明曾经下载过，跳过
-                        logger.debug(f"跳过已下载过的种子: {torrent['name']} (网站记录: 上传={history_info.get('uploaded', 0)}, 下载={history_info.get('download', 0)})")
+                        skip_tracker_history += 1
                         continue
                     
                     # 检查是否匹配规则
                     if not match_torrent(torrent, rule):
+                        skip_rule_mismatch += 1
                         continue
                     
                     # 检查下载队列限制（结合下载器实时状态和本次已推送数量）
@@ -354,6 +358,9 @@ async def auto_download_torrents():
                     )
                     db.add(history)
                     db.commit()
+                
+                # 输出过滤统计
+                logger.info(f"规则 '{rule.name}' 过滤统计: 本地历史={skip_local_history}, 网站历史={skip_tracker_history}, 规则不匹配={skip_rule_mismatch}, 本次推送={pushed_count_this_run}")
                     
             except Exception as e:
                 logger.error(f"处理规则 '{rule.name}' 失败: {e}")
@@ -830,7 +837,7 @@ async def restart_scheduler_with_new_intervals(new_intervals: Dict[str, int]):
     if scheduler.running:
         # 更新账号刷新任务
         if "account_refresh_interval" in new_intervals:
-            scheduler.modify_job(
+            scheduler.reschedule_job(
                 "refresh_accounts",
                 trigger=IntervalTrigger(seconds=new_intervals["account_refresh_interval"])
             )
@@ -838,7 +845,7 @@ async def restart_scheduler_with_new_intervals(new_intervals: Dict[str, int]):
         
         # 更新种子检查任务
         if "torrent_check_interval" in new_intervals:
-            scheduler.modify_job(
+            scheduler.reschedule_job(
                 "auto_download",
                 trigger=IntervalTrigger(seconds=new_intervals["torrent_check_interval"])
             )
@@ -846,7 +853,7 @@ async def restart_scheduler_with_new_intervals(new_intervals: Dict[str, int]):
         
         # 更新过期检查任务
         if "expired_check_interval" in new_intervals:
-            scheduler.modify_job(
+            scheduler.reschedule_job(
                 "check_expired",
                 trigger=IntervalTrigger(seconds=new_intervals["expired_check_interval"])
             )
