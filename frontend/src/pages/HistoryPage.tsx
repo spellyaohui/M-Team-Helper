@@ -411,8 +411,20 @@ export default function HistoryPage() {
       key: 'action',
       width: 80,
       render: (_: any, r: History) => (
-        <Popconfirm title="确定删除？" onConfirm={() => handleDelete(r.id)}>
-          <Button size="small" danger icon={<DeleteOutlined />}>删除</Button>
+        <Popconfirm 
+          title="确定删除？" 
+          onConfirm={() => handleDelete(r.id)}
+          getPopupContainer={() => document.body}
+          zIndex={1050}
+        >
+          <Button 
+            size="small" 
+            danger 
+            icon={<DeleteOutlined />}
+            style={{ cursor: 'pointer' }}
+          >
+            删除
+          </Button>
         </Popconfirm>
       ),
     },
@@ -450,7 +462,11 @@ export default function HistoryPage() {
             </Button>
           </Tooltip>
           
-          <Popconfirm title="确定清空已删除的记录？" onConfirm={handleClearDeleted}>
+          <Popconfirm 
+            title="确定清空已删除的记录？" 
+            onConfirm={handleClearDeleted}
+            getPopupContainer={() => document.body}
+          >
             <Tooltip title="清空下载器中已删除的种子记录">
               <Button 
                 icon={<ClearOutlined />}
@@ -461,7 +477,11 @@ export default function HistoryPage() {
             </Tooltip>
           </Popconfirm>
           
-          <Popconfirm title="确定清空所有记录？" onConfirm={handleClear}>
+          <Popconfirm 
+            title="确定清空所有记录？" 
+            onConfirm={handleClear}
+            getPopupContainer={() => document.body}
+          >
             <Button danger icon={<ClearOutlined />}>清空历史</Button>
           </Popconfirm>
         </Space>
@@ -474,11 +494,12 @@ export default function HistoryPage() {
       
       <Table
         virtual
-        scroll={{ y: 600 }}
+        scroll={{ y: 600, x: 'max-content' }}
         columns={columns}
         dataSource={history}
         rowKey="id"
         loading={loading}
+        style={{ position: 'relative', zIndex: 1 }}
         pagination={{
           current: page,
           total,

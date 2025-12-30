@@ -204,10 +204,10 @@ async def auto_download_torrents():
                     try:
                         current_downloading = await get_downloading_count(downloader)
                         if current_downloading >= rule.max_downloading:
-                            logger.debug(f"规则 '{rule.name}' 下载队列已满 ({current_downloading}/{rule.max_downloading})，跳过网站访问")
+                            logger.info(f"规则 '{rule.name}' 下载队列已满 ({current_downloading}/{rule.max_downloading})，跳过网站访问")
                             continue
                         else:
-                            logger.debug(f"规则 '{rule.name}' 下载队列状态: {current_downloading}/{rule.max_downloading}，继续检查种子")
+                            logger.info(f"规则 '{rule.name}' 下载队列状态: {current_downloading}/{rule.max_downloading}，继续检查种子")
                     except Exception as e:
                         logger.error(f"规则 '{rule.name}' 检查下载器 {downloader.name} 队列状态失败: {e}，跳过此规则")
                         continue
