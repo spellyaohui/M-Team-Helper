@@ -13,6 +13,10 @@ from database import init_db
 from routers import accounts, downloaders, torrents, rules, history
 from routers.auth import router as auth_router
 from services.scheduler import start_scheduler, stop_scheduler
+from utils.logger import LoggerManager, app_logger
+
+# 初始化日志系统
+LoggerManager.init(level="INFO")
 
 # 前端静态文件目录（提前定义）
 _docker_frontend = Path("/app/frontend/dist")
@@ -20,7 +24,7 @@ _dev_frontend = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 FRONTEND_DIR = _docker_frontend if _docker_frontend.exists() else _dev_frontend
 
 # API 路径前缀列表
-API_PREFIXES = ("/accounts", "/auth", "/downloaders", "/torrents", "/rules", "/history", "/settings", "/dashboard", "/health")
+API_PREFIXES = ("/accounts", "/auth", "/downloaders", "/torrents", "/rules", "/history", "/settings", "/dashboard", "/health", "/logs")
 
 class SPAMiddleware(BaseHTTPMiddleware):
     """SPA 中间件：处理前端路由，返回 index.html"""
@@ -58,7 +62,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 注册 API 路由
+# 注册 API 路由（不带 /api 前缀，前端已配置 baseURL）
 app.include_router(auth_router)
 app.include_router(accounts.router)
 app.include_router(downloaders.router)
@@ -74,15 +78,21 @@ app.include_router(settings.router)
 from routers import dashboard
 app.include_router(dashboard.router)
 
+# 导入日志路由
+from routers import logs
+app.include_router(logs.router)
+
 @app.on_event("startup")
 async def startup():
     """启动时初始化数据库和定时任务"""
+    app_logger.info("M-Team Helper 服务启动")
     init_db()
     start_scheduler()
 
 @app.on_event("shutdown")
 async def shutdown():
     """关闭时停止定时任务"""
+    app_logger.info("M-Team Helper 服务关闭")
     stop_scheduler()
 
 @app.get("/health")

@@ -1,4 +1,10 @@
+"""下载器服务模块
+
+支持 qBittorrent 和 Transmission 下载器。
+注意：transmission_rpc 是同步库，所有调用都需要通过 asyncio.to_thread() 包装以避免阻塞事件循环。
+"""
 from typing import Optional, List, Dict, Any
+import asyncio
 import qbittorrentapi
 from transmission_rpc import Client as TransmissionClient
 
@@ -21,7 +27,7 @@ def _get_qb_client(downloader):
 
 
 def _get_tr_client(downloader):
-    """获取 Transmission 客户端"""
+    """获取 Transmission 客户端（同步）"""
     protocol = "https" if getattr(downloader, 'use_ssl', False) else "http"
     return TransmissionClient(
         host=downloader.host,
@@ -29,8 +35,15 @@ def _get_tr_client(downloader):
         username=downloader.username,
         password=downloader.password,
         protocol=protocol,
-        timeout=5  # 5秒超时
+        timeout=10  # 10秒超时
     )
+
+
+def _sync_test_tr_connection(downloader) -> dict:
+    """同步测试 Transmission 连接"""
+    client = _get_tr_client(downloader)
+    session = client.get_session()
+    return {"success": True, "message": f"连接成功，版本: {session.version}"}
 
 
 async def test_downloader_connection(downloader) -> dict:
@@ -42,15 +55,32 @@ async def test_downloader_connection(downloader) -> dict:
             return {"success": True, "message": f"连接成功，版本: {version}"}
         
         elif downloader.type == "transmission":
-            client = _get_tr_client(downloader)
-            session = client.get_session()
-            return {"success": True, "message": f"连接成功，版本: {session.version}"}
+            # 使用 asyncio.to_thread 包装同步调用，避免阻塞事件循环
+            return await asyncio.to_thread(_sync_test_tr_connection, downloader)
         
         else:
             return {"success": False, "message": "不支持的下载器类型"}
     
     except Exception as e:
         return {"success": False, "message": f"连接失败: {str(e)}"}
+
+
+def _sync_add_tr_torrent(downloader, torrent_content: bytes, save_path: Optional[str] = None) -> Optional[str]:
+    """同步添加种子到 Transmission
+    
+    注意：transmission_rpc 的 add_torrent 方法直接接受种子内容（bytes），不需要 base64 编码
+    """
+    client = _get_tr_client(downloader)
+    
+    kwargs = {}
+    if save_path:
+        kwargs["download_dir"] = save_path
+    # Transmission 不支持标签
+    
+    # 直接传入种子内容，transmission_rpc 会自动处理
+    result = client.add_torrent(torrent_content, **kwargs)
+    return result.hashString if result else None
+
 
 async def add_torrent(downloader, torrent_path: str, save_path: Optional[str] = None, tags: Optional[List[str]] = None) -> Optional[str]:
     """添加种子到下载器
@@ -90,7 +120,6 @@ async def add_torrent(downloader, torrent_path: str, save_path: Optional[str] = 
             client.torrents_add(**kwargs)
             
             # 尝试获取刚添加的种子的 hash
-            # qBittorrent 添加后需要等待一下才能获取
             import time
             time.sleep(1)
             
@@ -103,28 +132,36 @@ async def add_torrent(downloader, torrent_path: str, save_path: Optional[str] = 
                 info_hash = hashlib.sha1(bencodepy.encode(info)).hexdigest()
                 return info_hash
             except:
-                # 如果解析失败，返回 True 表示添加成功但无法获取 hash
                 return "unknown"
         
         elif downloader.type == "transmission":
-            client = _get_tr_client(downloader)
-            
-            import base64
-            torrent_b64 = base64.b64encode(torrent_content).decode()
-            
-            kwargs = {"torrent": torrent_b64}
-            if save_path:
-                kwargs["download_dir"] = save_path
-            # Transmission 不支持标签
-            
-            result = client.add_torrent(**kwargs)
-            return result.hashString if result else None
+            # 使用 asyncio.to_thread 包装同步调用
+            return await asyncio.to_thread(_sync_add_tr_torrent, downloader, torrent_content, save_path)
         
         return None
     
     except Exception as e:
         print(f"[Downloader] 添加种子失败: {e}")
         return None
+
+
+def _sync_get_tr_torrent_info(downloader, info_hash: str) -> Optional[Dict[str, Any]]:
+    """同步获取 Transmission 种子信息"""
+    client = _get_tr_client(downloader)
+    torrents = client.get_torrents(ids=[info_hash])
+    
+    if torrents:
+        t = torrents[0]
+        return {
+            "hash": t.hashString,
+            "name": t.name,
+            "progress": t.progress,
+            "state": t.status,
+            "size": t.total_size,
+            "downloaded": t.downloaded_ever,
+            "is_completed": t.progress >= 100
+        }
+    return None
 
 
 async def get_torrent_info(downloader, info_hash: str) -> Optional[Dict[str, Any]]:
@@ -147,7 +184,7 @@ async def get_torrent_info(downloader, info_hash: str) -> Optional[Dict[str, Any
                 return {
                     "hash": t.hash,
                     "name": t.name,
-                    "progress": t.progress * 100,  # 转为百分比
+                    "progress": t.progress * 100,
                     "state": t.state,
                     "size": t.size,
                     "downloaded": t.downloaded,
@@ -155,26 +192,21 @@ async def get_torrent_info(downloader, info_hash: str) -> Optional[Dict[str, Any
                 }
         
         elif downloader.type == "transmission":
-            client = _get_tr_client(downloader)
-            torrents = client.get_torrents(ids=[info_hash])
-            
-            if torrents:
-                t = torrents[0]
-                return {
-                    "hash": t.hashString,
-                    "name": t.name,
-                    "progress": t.progress,
-                    "state": t.status,
-                    "size": t.total_size,
-                    "downloaded": t.downloaded_ever,
-                    "is_completed": t.progress >= 100
-                }
+            return await asyncio.to_thread(_sync_get_tr_torrent_info, downloader, info_hash)
         
         return None
     
     except Exception as e:
         print(f"[Downloader] 获取种子信息失败: {e}")
         return None
+
+
+def _sync_delete_tr_torrent(downloader, info_hash: str, delete_files: bool) -> bool:
+    """同步删除 Transmission 种子"""
+    client = _get_tr_client(downloader)
+    client.remove_torrent(ids=[info_hash], delete_data=delete_files)
+    print(f"[Downloader] 已删除种子: {info_hash}")
+    return True
 
 
 async def delete_torrent(downloader, info_hash: str, delete_files: bool = True) -> bool:
@@ -191,27 +223,32 @@ async def delete_torrent(downloader, info_hash: str, delete_files: bool = True) 
     try:
         if downloader.type == "qbittorrent":
             client = _get_qb_client(downloader)
-            client.torrents_delete(
-                torrent_hashes=info_hash,
-                delete_files=delete_files
-            )
+            client.torrents_delete(torrent_hashes=info_hash, delete_files=delete_files)
             print(f"[Downloader] 已删除种子: {info_hash}")
             return True
         
         elif downloader.type == "transmission":
-            client = _get_tr_client(downloader)
-            client.remove_torrent(
-                ids=[info_hash],
-                delete_data=delete_files
-            )
-            print(f"[Downloader] 已删除种子: {info_hash}")
-            return True
+            return await asyncio.to_thread(_sync_delete_tr_torrent, downloader, info_hash, delete_files)
         
         return False
     
     except Exception as e:
         print(f"[Downloader] 删除种子失败: {e}")
         return False
+
+
+def _sync_get_tr_incomplete_torrents(downloader) -> List[Dict[str, Any]]:
+    """同步获取 Transmission 未完成种子"""
+    client = _get_tr_client(downloader)
+    torrents = client.get_torrents()
+    
+    return [{
+        "hash": t.hashString,
+        "name": t.name,
+        "progress": t.progress,
+        "state": t.status,
+        "size": t.total_size
+    } for t in torrents if t.progress < 100]
 
 
 async def get_incomplete_torrents(downloader) -> List[Dict[str, Any]]:
@@ -223,7 +260,6 @@ async def get_incomplete_torrents(downloader) -> List[Dict[str, Any]]:
     try:
         if downloader.type == "qbittorrent":
             client = _get_qb_client(downloader)
-            # 获取所有下载中的种子
             torrents = client.torrents_info(status_filter="downloading")
             
             return [{
@@ -235,16 +271,7 @@ async def get_incomplete_torrents(downloader) -> List[Dict[str, Any]]:
             } for t in torrents]
         
         elif downloader.type == "transmission":
-            client = _get_tr_client(downloader)
-            torrents = client.get_torrents()
-            
-            return [{
-                "hash": t.hashString,
-                "name": t.name,
-                "progress": t.progress,
-                "state": t.status,
-                "size": t.total_size
-            } for t in torrents if t.progress < 100]
+            return await asyncio.to_thread(_sync_get_tr_incomplete_torrents, downloader)
         
         return []
     
@@ -289,9 +316,7 @@ async def create_tags(downloader, tags: List[str]) -> bool:
     try:
         if downloader.type == "qbittorrent":
             client = _get_qb_client(downloader)
-            # 获取现有标签
             existing_tags = set(client.torrents_tags() or [])
-            # 创建不存在的标签
             new_tags = [t for t in tags if t not in existing_tags]
             if new_tags:
                 client.torrents_create_tags(tags=new_tags)
@@ -309,6 +334,23 @@ async def create_tags(downloader, tags: List[str]) -> bool:
         return False
 
 
+def _sync_get_qb_downloading_count(downloader) -> int:
+    """同步获取 qBittorrent 下载中种子数量"""
+    client = _get_qb_client(downloader)
+    torrents = client.torrents_info(status_filter="downloading")
+    # 只统计真正在活跃下载的种子（state == "downloading"）
+    active_downloading = [t for t in torrents if t.state == "downloading"]
+    return len(active_downloading)
+
+
+def _sync_get_tr_downloading_count(downloader) -> int:
+    """同步获取 Transmission 下载中种子数量"""
+    client = _get_tr_client(downloader)
+    torrents = client.get_torrents()
+    # 只统计真正在下载的（进度小于100%且状态为下载中）
+    return len([t for t in torrents if t.progress < 100 and t.status == 'downloading'])
+
+
 async def get_downloading_count(downloader) -> int:
     """获取正在下载的种子数量
     
@@ -317,24 +359,30 @@ async def get_downloading_count(downloader) -> int:
     """
     try:
         if downloader.type == "qbittorrent":
-            client = _get_qb_client(downloader)
-            # 获取所有下载中的种子
-            torrents = client.torrents_info(status_filter="downloading")
-            # 只统计真正在活跃下载的种子（state == "downloading"）
-            # 排除 stalledDL（停滞）、pausedDL（暂停）、queuedDL（排队）等状态
-            active_downloading = [t for t in torrents if t.state == "downloading"]
-            return len(active_downloading)
+            return await asyncio.to_thread(_sync_get_qb_downloading_count, downloader)
         
         elif downloader.type == "transmission":
-            client = _get_tr_client(downloader)
-            torrents = client.get_torrents()
-            return len([t for t in torrents if t.progress < 100])
+            return await asyncio.to_thread(_sync_get_tr_downloading_count, downloader)
         
         return 0
     
     except Exception as e:
         print(f"[Downloader] 获取下载中种子数量失败: {e}")
         return 0
+
+
+def _sync_get_qb_seeding_count(downloader) -> int:
+    """同步获取 qBittorrent 做种中种子数量"""
+    client = _get_qb_client(downloader)
+    torrents = client.torrents_info(status_filter="uploading")
+    return len(torrents)
+
+
+def _sync_get_tr_seeding_count(downloader) -> int:
+    """同步获取 Transmission 做种中种子数量"""
+    client = _get_tr_client(downloader)
+    torrents = client.get_torrents()
+    return len([t for t in torrents if t.progress >= 100 and t.status in ['seeding', 'seed_wait']])
 
 
 async def get_seeding_count(downloader) -> int:
@@ -345,22 +393,59 @@ async def get_seeding_count(downloader) -> int:
     """
     try:
         if downloader.type == "qbittorrent":
-            client = _get_qb_client(downloader)
-            # 获取所有上传中的种子（做种状态）
-            torrents = client.torrents_info(status_filter="uploading")
-            return len(torrents)
+            return await asyncio.to_thread(_sync_get_qb_seeding_count, downloader)
         
         elif downloader.type == "transmission":
-            client = _get_tr_client(downloader)
-            torrents = client.get_torrents()
-            # Transmission 中进度100%且正在上传的为做种状态
-            return len([t for t in torrents if t.progress >= 100 and t.status in ['seeding', 'seed_wait']])
+            return await asyncio.to_thread(_sync_get_tr_seeding_count, downloader)
         
         return 0
     
     except Exception as e:
         print(f"[Downloader] 获取做种中种子数量失败: {e}")
         return 0
+
+
+def _sync_get_tr_torrent_info_with_tags(downloader, info_hash: str) -> Optional[Dict[str, Any]]:
+    """同步获取 Transmission 种子信息（包含标签）"""
+    client = _get_tr_client(downloader)
+    torrents = client.get_torrents(ids=[info_hash])
+    
+    if torrents:
+        t = torrents[0]
+        return {
+            "hash": t.hashString,
+            "name": t.name,
+            "progress": t.progress,
+            "state": t.status,
+            "size": t.total_size,
+            "downloaded": t.downloaded_ever,
+            "is_completed": t.progress >= 100,
+            "tags": []  # Transmission 不支持标签
+        }
+    return None
+
+
+def _sync_get_qb_torrent_info_with_tags(downloader, info_hash: str) -> Optional[Dict[str, Any]]:
+    """同步获取 qBittorrent 种子信息（包含标签）"""
+    client = _get_qb_client(downloader)
+    torrents = client.torrents_info(torrent_hashes=info_hash)
+    
+    if torrents:
+        t = torrents[0]
+        tags = t.tags.split(',') if t.tags else []
+        tags = [tag.strip() for tag in tags if tag.strip()]
+        
+        return {
+            "hash": t.hash,
+            "name": t.name,
+            "progress": t.progress * 100,
+            "state": t.state,
+            "size": t.size,
+            "downloaded": t.downloaded,
+            "is_completed": t.progress >= 1.0,
+            "tags": tags
+        }
+    return None
 
 
 async def get_torrent_info_with_tags(downloader, info_hash: str) -> Optional[Dict[str, Any]]:
@@ -375,48 +460,29 @@ async def get_torrent_info_with_tags(downloader, info_hash: str) -> Optional[Dic
     """
     try:
         if downloader.type == "qbittorrent":
-            client = _get_qb_client(downloader)
-            torrents = client.torrents_info(torrent_hashes=info_hash)
-            
-            if torrents:
-                t = torrents[0]
-                # 获取标签列表
-                tags = t.tags.split(',') if t.tags else []
-                tags = [tag.strip() for tag in tags if tag.strip()]
-                
-                return {
-                    "hash": t.hash,
-                    "name": t.name,
-                    "progress": t.progress * 100,
-                    "state": t.state,
-                    "size": t.size,
-                    "downloaded": t.downloaded,
-                    "is_completed": t.progress >= 1.0,
-                    "tags": tags
-                }
+            # 使用 asyncio.to_thread 包装，避免阻塞事件循环
+            return await asyncio.to_thread(_sync_get_qb_torrent_info_with_tags, downloader, info_hash)
         
         elif downloader.type == "transmission":
-            client = _get_tr_client(downloader)
-            torrents = client.get_torrents(ids=[info_hash])
-            
-            if torrents:
-                t = torrents[0]
-                return {
-                    "hash": t.hashString,
-                    "name": t.name,
-                    "progress": t.progress,
-                    "state": t.status,
-                    "size": t.total_size,
-                    "downloaded": t.downloaded_ever,
-                    "is_completed": t.progress >= 100,
-                    "tags": []  # Transmission 不支持标签
-                }
+            return await asyncio.to_thread(_sync_get_tr_torrent_info_with_tags, downloader, info_hash)
         
         return None
     
     except Exception as e:
         print(f"[Downloader] 获取种子信息失败: {e}")
         return None
+
+
+def _sync_get_tr_disk_space_info(downloader) -> Optional[Dict[str, Any]]:
+    """同步获取 Transmission 磁盘空间信息"""
+    client = _get_tr_client(downloader)
+    session = client.get_session()
+    
+    disk_info = {}
+    if hasattr(session, 'download_dir'):
+        disk_info["download_dir"] = session.download_dir
+    
+    return disk_info
 
 
 async def get_disk_space_info(downloader) -> Optional[Dict[str, Any]]:
@@ -431,23 +497,17 @@ async def get_disk_space_info(downloader) -> Optional[Dict[str, Any]]:
     try:
         if downloader.type == "qbittorrent":
             client = _get_qb_client(downloader)
-            # 使用 sync_maindata 获取服务器状态信息
             maindata = client.sync_maindata()
             
             if maindata and "server_state" in maindata:
                 server_state = maindata["server_state"]
-                
-                # 提取磁盘空间相关信息
                 disk_info = {}
                 
-                # 剩余磁盘空间（字节）
                 if "free_space_on_disk" in server_state:
                     disk_info["free_space_bytes"] = server_state["free_space_on_disk"]
-                    # 转换为更友好的单位
                     free_gb = server_state["free_space_on_disk"] / (1024 ** 3)
                     disk_info["free_space_gb"] = round(free_gb, 2)
                 
-                # 其他可能的服务器状态信息
                 if "dl_info_speed" in server_state:
                     disk_info["download_speed"] = server_state["dl_info_speed"]
                 if "up_info_speed" in server_state:
@@ -460,25 +520,57 @@ async def get_disk_space_info(downloader) -> Optional[Dict[str, Any]]:
                 return disk_info
         
         elif downloader.type == "transmission":
-            client = _get_tr_client(downloader)
-            # Transmission 的 session 信息中包含一些统计数据
-            session = client.get_session()
-            
-            disk_info = {}
-            
-            # Transmission 没有直接的磁盘空间 API，但可以获取下载目录
-            if hasattr(session, 'download_dir'):
-                disk_info["download_dir"] = session.download_dir
-            
-            # 可以通过系统调用获取磁盘空间（需要额外实现）
-            # 这里先返回基本信息
-            return disk_info
+            return await asyncio.to_thread(_sync_get_tr_disk_space_info, downloader)
         
         return None
     
     except Exception as e:
         print(f"[Downloader] 获取磁盘空间信息失败: {e}")
         return None
+
+
+def _sync_get_qb_all_torrents(downloader) -> List[Dict[str, Any]]:
+    """同步获取 qBittorrent 所有种子详细信息"""
+    client = _get_qb_client(downloader)
+    torrents = client.torrents_info()
+    
+    result = []
+    for t in torrents:
+        result.append({
+            "hash": t.hash,
+            "name": t.name,
+            "size": t.size,
+            "added_on": t.added_on,
+            "ratio": t.ratio,
+            "state": t.state,
+            "progress": t.progress * 100,
+            "downloaded": t.downloaded,
+            "uploaded": t.uploaded,
+            "tags": t.tags.split(',') if t.tags else []
+        })
+    return result
+
+
+def _sync_get_tr_all_torrents(downloader) -> List[Dict[str, Any]]:
+    """同步获取 Transmission 所有种子详细信息"""
+    client = _get_tr_client(downloader)
+    torrents = client.get_torrents()
+    
+    result = []
+    for t in torrents:
+        result.append({
+            "hash": t.hashString,
+            "name": t.name,
+            "size": t.total_size,
+            "added_on": t.date_added.timestamp() if t.date_added else 0,
+            "ratio": t.ratio,
+            "state": t.status,
+            "progress": t.progress,
+            "downloaded": t.downloaded_ever,
+            "uploaded": t.uploaded_ever,
+            "tags": []  # Transmission 不支持标签
+        })
+    return result
 
 
 async def get_all_torrents_with_details(downloader) -> List[Dict[str, Any]]:
@@ -489,44 +581,10 @@ async def get_all_torrents_with_details(downloader) -> List[Dict[str, Any]]:
     """
     try:
         if downloader.type == "qbittorrent":
-            client = _get_qb_client(downloader)
-            torrents = client.torrents_info()
-            
-            result = []
-            for t in torrents:
-                result.append({
-                    "hash": t.hash,
-                    "name": t.name,
-                    "size": t.size,
-                    "added_on": t.added_on,  # 添加时间戳
-                    "ratio": t.ratio,
-                    "state": t.state,
-                    "progress": t.progress * 100,
-                    "downloaded": t.downloaded,
-                    "uploaded": t.uploaded,
-                    "tags": t.tags.split(',') if t.tags else []
-                })
-            return result
+            return await asyncio.to_thread(_sync_get_qb_all_torrents, downloader)
         
         elif downloader.type == "transmission":
-            client = _get_tr_client(downloader)
-            torrents = client.get_torrents()
-            
-            result = []
-            for t in torrents:
-                result.append({
-                    "hash": t.hashString,
-                    "name": t.name,
-                    "size": t.total_size,
-                    "added_on": t.date_added.timestamp() if t.date_added else 0,
-                    "ratio": t.ratio,
-                    "state": t.status,
-                    "progress": t.progress,
-                    "downloaded": t.downloaded_ever,
-                    "uploaded": t.uploaded_ever,
-                    "tags": []  # Transmission 不支持标签
-                })
-            return result
+            return await asyncio.to_thread(_sync_get_tr_all_torrents, downloader)
         
         return []
     
@@ -544,7 +602,7 @@ async def get_downloader_total_size(downloader) -> float:
     try:
         torrents = await get_all_torrents_with_details(downloader)
         total_bytes = sum(t["size"] for t in torrents)
-        return total_bytes / (1024 ** 3)  # 转换为GB
+        return total_bytes / (1024 ** 3)
     
     except Exception as e:
         print(f"[Downloader] 获取下载器总大小失败: {e}")
@@ -570,17 +628,14 @@ async def delete_torrents_by_free_space(
     """
     try:
         if need_to_free_gb <= 0:
-            return []  # 不需要释放空间
+            return []
         
         # 根据策略排序种子
         if strategy == "oldest_first":
-            # 按添加时间排序（最旧的优先）
             sorted_torrents = sorted(torrents, key=lambda x: x["added_on"])
         elif strategy == "largest_first":
-            # 按大小排序（最大的优先）
             sorted_torrents = sorted(torrents, key=lambda x: x["size"], reverse=True)
         elif strategy == "lowest_ratio":
-            # 按分享率排序（最低的优先）
             sorted_torrents = sorted(torrents, key=lambda x: x["ratio"])
         else:
             sorted_torrents = torrents
@@ -592,7 +647,6 @@ async def delete_torrents_by_free_space(
             if freed_space_gb >= need_to_free_gb:
                 break
             
-            # 删除种子
             success = await delete_torrent(downloader, torrent["hash"], delete_files=True)
             if success:
                 deleted_hashes.append(torrent["hash"])
@@ -628,19 +682,16 @@ async def delete_torrents_by_strategy(
     try:
         current_size_gb = sum(t["size"] for t in torrents) / (1024 ** 3)
         if current_size_gb <= target_size_gb:
-            return []  # 已经低于目标大小
+            return []
         
         need_to_delete_gb = current_size_gb - target_size_gb
         
         # 根据策略排序种子
         if strategy == "oldest_first":
-            # 按添加时间排序（最旧的优先）
             sorted_torrents = sorted(torrents, key=lambda x: x["added_on"])
         elif strategy == "largest_first":
-            # 按大小排序（最大的优先）
             sorted_torrents = sorted(torrents, key=lambda x: x["size"], reverse=True)
         elif strategy == "lowest_ratio":
-            # 按分享率排序（最低的优先）
             sorted_torrents = sorted(torrents, key=lambda x: x["ratio"])
         else:
             sorted_torrents = torrents
@@ -652,7 +703,6 @@ async def delete_torrents_by_strategy(
             if deleted_size_gb >= need_to_delete_gb:
                 break
             
-            # 删除种子
             success = await delete_torrent(downloader, torrent["hash"], delete_files=True)
             if success:
                 deleted_hashes.append(torrent["hash"])
@@ -665,65 +715,77 @@ async def delete_torrents_by_strategy(
     except Exception as e:
         print(f"[Downloader] 动态删种失败: {e}")
         return []
-    """获取磁盘空间信息
+
+
+def _sync_get_tr_server_stats(downloader) -> Optional[Dict[str, Any]]:
+    """同步获取 Transmission 服务器统计信息"""
+    client = _get_tr_client(downloader)
+    session = client.get_session()
     
-    Args:
-        downloader: 下载器配置对象
+    stats = {
+        "version": getattr(session, 'version', 'unknown'),
+        "download_dir": getattr(session, 'download_dir', ''),
+        "speed_limit_down_enabled": getattr(session, 'speed_limit_down_enabled', False),
+        "speed_limit_up_enabled": getattr(session, 'speed_limit_up_enabled', False),
+        "speed_limit_down": getattr(session, 'speed_limit_down', 0),
+        "speed_limit_up": getattr(session, 'speed_limit_up', 0),
+        "connection_status": "connected",  # Transmission 连接成功即为 connected
+    }
     
-    Returns:
-        磁盘空间信息字典，包含剩余空间等信息
-    """
+    # 获取统计信息
     try:
-        if downloader.type == "qbittorrent":
-            client = _get_qb_client(downloader)
-            # 使用 sync_maindata 获取服务器状态信息
-            maindata = client.sync_maindata()
+        session_stats = client.session_stats()
+        if session_stats:
+            # 使用 fields 字典获取数据
+            f = session_stats.fields if hasattr(session_stats, 'fields') else {}
             
-            if maindata and "server_state" in maindata:
-                server_state = maindata["server_state"]
-                
-                # 提取磁盘空间相关信息
-                disk_info = {}
-                
-                # 剩余磁盘空间（字节）
-                if "free_space_on_disk" in server_state:
-                    disk_info["free_space_bytes"] = server_state["free_space_on_disk"]
-                    # 转换为更友好的单位
-                    free_gb = server_state["free_space_on_disk"] / (1024 ** 3)
-                    disk_info["free_space_gb"] = round(free_gb, 2)
-                
-                # 其他可能的服务器状态信息
-                if "dl_info_speed" in server_state:
-                    disk_info["download_speed"] = server_state["dl_info_speed"]
-                if "up_info_speed" in server_state:
-                    disk_info["upload_speed"] = server_state["up_info_speed"]
-                if "dl_info_data" in server_state:
-                    disk_info["total_downloaded"] = server_state["dl_info_data"]
-                if "up_info_data" in server_state:
-                    disk_info["total_uploaded"] = server_state["up_info_data"]
-                
-                return disk_info
-        
-        elif downloader.type == "transmission":
-            client = _get_tr_client(downloader)
-            # Transmission 的 session 信息中包含一些统计数据
-            session = client.get_session()
+            # 当前速度
+            download_speed = f.get("downloadSpeed", 0)
+            upload_speed = f.get("uploadSpeed", 0)
             
-            disk_info = {}
+            # 累计统计
+            cumulative = f.get("cumulative-stats", {})
+            downloaded_bytes = cumulative.get("downloadedBytes", 0)
+            uploaded_bytes = cumulative.get("uploadedBytes", 0)
             
-            # Transmission 没有直接的磁盘空间 API，但可以获取下载目录
-            if hasattr(session, 'download_dir'):
-                disk_info["download_dir"] = session.download_dir
-            
-            # 可以通过系统调用获取磁盘空间（需要额外实现）
-            # 这里先返回基本信息
-            return disk_info
-        
-        return None
-    
+            stats.update({
+                "dl_info_speed": download_speed,
+                "up_info_speed": upload_speed,
+                "dl_info_data": downloaded_bytes,
+                "up_info_data": uploaded_bytes,
+            })
     except Exception as e:
-        print(f"[Downloader] 获取磁盘空间信息失败: {e}")
-        return None
+        print(f"[Downloader] 获取 Transmission 统计信息失败: {e}")
+    
+    return stats
+
+
+def _sync_get_qb_server_stats(downloader) -> Optional[Dict[str, Any]]:
+    """同步获取 qBittorrent 服务器统计信息"""
+    client = _get_qb_client(downloader)
+    maindata = client.sync_maindata()
+    
+    if maindata and "server_state" in maindata:
+        server_state = maindata["server_state"]
+        
+        stats = {
+            "connection_status": server_state.get("connection_status", "unknown"),
+            "dht_nodes": server_state.get("dht_nodes", 0),
+            "dl_info_speed": server_state.get("dl_info_speed", 0),
+            "up_info_speed": server_state.get("up_info_speed", 0),
+            "dl_info_data": server_state.get("dl_info_data", 0),
+            "up_info_data": server_state.get("up_info_data", 0),
+            "dl_rate_limit": server_state.get("dl_rate_limit", 0),
+            "up_rate_limit": server_state.get("up_rate_limit", 0),
+            "queueing": server_state.get("queueing", False),
+        }
+        
+        if "free_space_on_disk" in server_state:
+            stats["free_space_bytes"] = server_state["free_space_on_disk"]
+            stats["free_space_gb"] = round(server_state["free_space_on_disk"] / (1024 ** 3), 2)
+        
+        return stats
+    return None
 
 
 async def get_server_stats(downloader) -> Optional[Dict[str, Any]]:
@@ -737,59 +799,10 @@ async def get_server_stats(downloader) -> Optional[Dict[str, Any]]:
     """
     try:
         if downloader.type == "qbittorrent":
-            client = _get_qb_client(downloader)
-            # 获取主数据，包含服务器状态
-            maindata = client.sync_maindata()
-            
-            if maindata and "server_state" in maindata:
-                server_state = maindata["server_state"]
-                
-                stats = {
-                    "connection_status": server_state.get("connection_status", "unknown"),
-                    "dht_nodes": server_state.get("dht_nodes", 0),
-                    "dl_info_speed": server_state.get("dl_info_speed", 0),  # 当前下载速度
-                    "up_info_speed": server_state.get("up_info_speed", 0),  # 当前上传速度
-                    "dl_info_data": server_state.get("dl_info_data", 0),    # 总下载量
-                    "up_info_data": server_state.get("up_info_data", 0),    # 总上传量
-                    "dl_rate_limit": server_state.get("dl_rate_limit", 0),  # 下载限速
-                    "up_rate_limit": server_state.get("up_rate_limit", 0),  # 上传限速
-                    "queueing": server_state.get("queueing", False),        # 是否启用队列
-                }
-                
-                # 磁盘空间信息
-                if "free_space_on_disk" in server_state:
-                    stats["free_space_bytes"] = server_state["free_space_on_disk"]
-                    stats["free_space_gb"] = round(server_state["free_space_on_disk"] / (1024 ** 3), 2)
-                
-                return stats
+            return await asyncio.to_thread(_sync_get_qb_server_stats, downloader)
         
         elif downloader.type == "transmission":
-            client = _get_tr_client(downloader)
-            session = client.get_session()
-            
-            stats = {
-                "version": getattr(session, 'version', 'unknown'),
-                "download_dir": getattr(session, 'download_dir', ''),
-                "speed_limit_down_enabled": getattr(session, 'speed_limit_down_enabled', False),
-                "speed_limit_up_enabled": getattr(session, 'speed_limit_up_enabled', False),
-                "speed_limit_down": getattr(session, 'speed_limit_down', 0),
-                "speed_limit_up": getattr(session, 'speed_limit_up', 0),
-            }
-            
-            # 获取统计信息
-            try:
-                session_stats = client.get_session_stats()
-                if session_stats:
-                    stats.update({
-                        "download_speed": getattr(session_stats, 'downloadSpeed', 0),
-                        "upload_speed": getattr(session_stats, 'uploadSpeed', 0),
-                        "total_downloaded": getattr(session_stats, 'cumulative_stats', {}).get('downloadedBytes', 0),
-                        "total_uploaded": getattr(session_stats, 'cumulative_stats', {}).get('uploadedBytes', 0),
-                    })
-            except:
-                pass
-            
-            return stats
+            return await asyncio.to_thread(_sync_get_tr_server_stats, downloader)
         
         return None
     

@@ -54,9 +54,28 @@ async def create_downloader(data: DownloaderCreate, db: Session = Depends(get_db
     db.refresh(downloader)
     return downloader
 
+@router.post("/test")
+async def test_connection_direct(data: DownloaderCreate):
+    """直接测试下载器连接（不需要先保存）"""
+    # 创建临时下载器对象用于测试
+    class TempDownloader:
+        pass
+    
+    temp = TempDownloader()
+    temp.type = data.type
+    temp.host = data.host
+    temp.port = data.port
+    temp.username = data.username
+    temp.password = data.password
+    temp.use_ssl = data.use_ssl
+    
+    result = await test_downloader_connection(temp)
+    return result
+
+
 @router.post("/{downloader_id}/test")
 async def test_connection(downloader_id: int, db: Session = Depends(get_db)):
-    """测试下载器连接"""
+    """测试已保存的下载器连接"""
     downloader = db.query(Downloader).filter(Downloader.id == downloader_id).first()
     if not downloader:
         raise HTTPException(status_code=404, detail="下载器不存在")

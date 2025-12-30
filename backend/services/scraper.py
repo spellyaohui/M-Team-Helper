@@ -1,6 +1,7 @@
 import httpx
 from typing import Optional, Dict, Any, List
 from config import settings
+from utils.logger import mteam_logger as logger
 
 class MTeamAPI:
     """M-Team API 客户端，使用 API Token 认证"""
@@ -25,7 +26,7 @@ class MTeamAPI:
             data = {}
         
         start_time = time.time()
-        print(f"[MTeamAPI] 请求开始: {endpoint}")
+        logger.debug(f"请求开始: {endpoint}")
         
         try:
             async with httpx.AsyncClient(timeout=20.0) as client:  # 减少超时到 20 秒
@@ -64,11 +65,11 @@ class MTeamAPI:
                 
                 if result.get("code") == "0":
                     elapsed = time.time() - start_time
-                    print(f"[MTeamAPI] 请求成功: {endpoint}, 耗时: {elapsed:.2f}s")
+                    logger.debug(f"请求成功: {endpoint}, 耗时: {elapsed:.2f}s")
                     return {"success": True, "data": result.get("data")}
                 else:
                     elapsed = time.time() - start_time
-                    print(f"[MTeamAPI] 请求失败: {endpoint}, 耗时: {elapsed:.2f}s, 错误: {result.get('message')}")
+                    logger.warning(f"请求失败: {endpoint}, 耗时: {elapsed:.2f}s, 错误: {result.get('message')}")
                     return {"success": False, "error": result.get("message", "API请求失败")}
                     
         except httpx.TimeoutException:

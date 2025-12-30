@@ -11,6 +11,7 @@ from services.scraper import MTeamAPI, parse_torrent
 from services.downloader import add_torrent, get_torrent_info, delete_torrent, get_downloading_count, get_torrent_info_with_tags, get_all_torrents_with_details, get_downloader_total_size, delete_torrents_by_strategy, delete_torrents_by_free_space, get_disk_space_info
 from routers.rules import match_torrent
 from config import settings, TORRENT_DIR
+from utils.logger import scheduler_logger as logger
 
 scheduler = AsyncIOScheduler()
 
@@ -39,7 +40,7 @@ def get_refresh_intervals() -> Dict[str, int]:
                 default_intervals.update(intervals)
                 return default_intervals
             except json.JSONDecodeError:
-                print("[Scheduler] 解析刷新间隔设置失败，使用默认值")
+                logger.warning("解析刷新间隔设置失败，使用默认值")
                 return default_intervals
         
         return default_intervals
@@ -135,7 +136,7 @@ def is_task_allowed(task_name: str) -> bool:
     
     # 调试日志
     if len(matched_ranges) > 1:
-        print(f"[Scheduler] 时间 {now.strftime('%H:%M')} 匹配到 {len(matched_ranges)} 个时间段，"
+        logger.debug(f"时间 {now.strftime('%H:%M')} 匹配到 {len(matched_ranges)} 个时间段，"
               f"选择最具体的 {best_match['start']}-{best_match['end']}，{task_name}={'允许' if result else '禁用'}")
     
     return result
@@ -148,7 +149,7 @@ async def refresh_all_accounts():
     
     # 检查是否允许执行
     if not is_task_allowed("account_refresh"):
-        print("[Scheduler] 账号刷新任务在当前时间段被禁用，跳过")
+        logger.info("账号刷新任务在当前时间段被禁用，跳过")
         return
     
     db = SessionLocal()
@@ -167,9 +168,9 @@ async def refresh_all_accounts():
                         account.ratio = float(member_count.get("shareRate", 0))
                         account.bonus = float(member_count.get("bonus", 0))
                         account.last_login = beijing_now()
-                        print(f"[Scheduler] 刷新账号 {account.username} 成功")
+                        logger.info(f"刷新账号 {account.username} 成功")
                 except Exception as e:
-                    print(f"[Scheduler] 刷新账号 {account.username} 失败: {e}")
+                    logger.error(f"刷新账号 {account.username} 失败: {e}")
         db.commit()
     finally:
         db.close()
@@ -181,7 +182,7 @@ async def auto_download_torrents():
     
     # 检查是否允许执行
     if not is_task_allowed("auto_download"):
-        print("[Scheduler] 自动下载任务在当前时间段被禁用，跳过")
+        logger.info("自动下载任务在当前时间段被禁用，跳过")
         return
     
     db = SessionLocal()
@@ -204,15 +205,15 @@ async def auto_download_torrents():
                     try:
                         current_downloading = await get_downloading_count(downloader)
                         if current_downloading >= rule.max_downloading:
-                            print(f"[Scheduler] 规则 '{rule.name}' 下载队列已满 ({current_downloading}/{rule.max_downloading})，跳过网站访问")
+                            logger.debug(f"规则 '{rule.name}' 下载队列已满 ({current_downloading}/{rule.max_downloading})，跳过网站访问")
                             continue
                         else:
-                            print(f"[Scheduler] 规则 '{rule.name}' 下载队列状态: {current_downloading}/{rule.max_downloading}，继续检查种子")
+                            logger.debug(f"规则 '{rule.name}' 下载队列状态: {current_downloading}/{rule.max_downloading}，继续检查种子")
                     except Exception as e:
-                        print(f"[Scheduler] 检查下载器 {downloader.name} 队列状态失败: {e}")
+                        logger.error(f"检查下载器 {downloader.name} 队列状态失败: {e}")
                         continue
                 else:
-                    print(f"[Scheduler] 规则 '{rule.name}' 关联的下载器不存在，跳过")
+                    logger.warning(f"规则 '{rule.name}' 关联的下载器不存在，跳过")
                     continue
             
             try:
@@ -225,7 +226,7 @@ async def auto_download_torrents():
                 elif rule.double_upload:
                     discount = "_2X"
                 
-                print(f"[Scheduler] 规则 '{rule.name}' 开始访问网站搜索种子")
+                logger.debug(f"规则 '{rule.name}' 开始访问网站搜索种子")
                 result = await api.search_torrents(
                     page=1,
                     page_size=50,
@@ -235,11 +236,11 @@ async def auto_download_torrents():
                 )
                 
                 if not result["success"]:
-                    print(f"[Scheduler] 规则 '{rule.name}' 搜索种子失败")
+                    logger.warning(f"规则 '{rule.name}' 搜索种子失败")
                     continue
                 
                 torrents = [parse_torrent(t) for t in result["data"].get("data", [])]
-                print(f"[Scheduler] 规则 '{rule.name}' 获取到 {len(torrents)} 个种子")
+                logger.debug(f"规则 '{rule.name}' 获取到 {len(torrents)} 个种子")
                 
                 # 批量查询这些种子在 M-Team 网站的下载历史
                 tracker_history = {}
@@ -249,7 +250,7 @@ async def auto_download_torrents():
                     if history_result["success"]:
                         tracker_history = history_result["data"].get("historyMap", {})
                         if tracker_history:
-                            print(f"[Scheduler] 规则 '{rule.name}' 查询到 {len(tracker_history)} 个种子有下载历史")
+                            logger.debug(f"规则 '{rule.name}' 查询到 {len(tracker_history)} 个种子有下载历史")
                 
                 # 本次任务已推送的种子数量（用于精确控制下载数量）
                 pushed_count_this_run = 0
@@ -268,7 +269,7 @@ async def auto_download_torrents():
                     if torrent["id"] in tracker_history:
                         history_info = tracker_history[torrent["id"]]
                         # 有下载历史记录，说明曾经下载过，跳过
-                        print(f"[Scheduler] 跳过已下载过的种子: {torrent['name']} (网站记录: 上传={history_info.get('uploaded', 0)}, 下载={history_info.get('download', 0)})")
+                        logger.debug(f"跳过已下载过的种子: {torrent['name']} (网站记录: 上传={history_info.get('uploaded', 0)}, 下载={history_info.get('download', 0)})")
                         continue
                     
                     # 检查是否匹配规则
@@ -286,15 +287,15 @@ async def auto_download_torrents():
                             # 加上本次已推送的数量，确保不会超过限制
                             effective_downloading = current_downloading + pushed_count_this_run
                             if effective_downloading >= rule.max_downloading:
-                                print(f"[Scheduler] 下载队列已满 ({current_downloading}+{pushed_count_this_run}/{rule.max_downloading})，停止处理更多种子")
+                                logger.info(f"下载队列已满 ({current_downloading}+{pushed_count_this_run}/{rule.max_downloading})，停止处理更多种子")
                                 break  # 跳出种子循环，但继续处理下一个规则
                     
-                    print(f"[Scheduler] 匹配规则 '{rule.name}': {torrent['name']}")
+                    logger.info(f"匹配规则 '{rule.name}': {torrent['name']}")
                     
                     # 下载种子文件
                     torrent_content = await api.download_torrent(torrent["id"])
                     if not torrent_content:
-                        print(f"[Scheduler] 下载种子文件失败: {torrent['name']}")
+                        logger.warning(f"下载种子文件失败: {torrent['name']}")
                         continue
                     
                     # 保存种子文件
@@ -317,7 +318,7 @@ async def auto_download_torrents():
                                 rule.tags  # 传入标签
                             )
                             status = "pushing" if info_hash else "push_failed"
-                            print(f"[Scheduler] 推送到下载器: {bool(info_hash)}, hash: {info_hash}")
+                            logger.info(f"推送到下载器: {bool(info_hash)}, hash: {info_hash}")
                             
                             # 推送成功，增加本次已推送计数
                             if info_hash:
@@ -335,7 +336,7 @@ async def auto_download_torrents():
                             elif isinstance(ts, str):
                                 discount_end_time = datetime.fromisoformat(ts.replace("Z", "+00:00"))
                         except Exception as e:
-                            print(f"[Scheduler] 解析促销到期时间失败: {e}")
+                            logger.warning(f"解析促销到期时间失败: {e}")
                     
                     # 记录下载历史（包含封面图片）
                     history = DownloadHistory(
@@ -355,7 +356,7 @@ async def auto_download_torrents():
                     db.commit()
                     
             except Exception as e:
-                print(f"[Scheduler] 处理规则 '{rule.name}' 失败: {e}")
+                logger.error(f"处理规则 '{rule.name}' 失败: {e}")
                 
     finally:
         db.close()
@@ -376,7 +377,7 @@ async def check_expired_torrents():
     
     # 检查是否允许执行
     if not is_task_allowed("expired_check"):
-        print("[Scheduler] 过期检查任务在当前时间段被禁用，跳过")
+        logger.info("过期检查任务在当前时间段被禁用，跳过")
         return
     
     db = SessionLocal()
@@ -400,11 +401,11 @@ async def check_expired_torrents():
             try:
                 auto_delete_config.update(json.loads(setting.value))
             except json.JSONDecodeError:
-                print(f"[Scheduler] 解析自动删种设置失败，使用默认配置")
+                logger.info(f" 解析自动删种设置失败，使用默认配置")
         
         # 如果禁用了自动删种，直接返回
         if not auto_delete_config.get("enabled", True):
-            print(f"[Scheduler] 自动删种功能已禁用")
+            logger.info(f" 自动删种功能已禁用")
             return
         
         now = beijing_now()
@@ -441,8 +442,8 @@ async def check_expired_torrents():
             if should_check:
                 records_to_check.append((record, reason))
         
-        print(f"[Scheduler] 检查下载中的非免费/过期种子，找到 {len(records_to_check)} 个需要处理")
-        print(f"[Scheduler] 删种设置: 启用={auto_delete_config['enabled']}, 范围={auto_delete_config['delete_scope']}, 检查标签={auto_delete_config['check_tags']}")
+        logger.info(f" 检查下载中的非免费/过期种子，找到 {len(records_to_check)} 个需要处理")
+        logger.info(f" 删种设置: 启用={auto_delete_config['enabled']}, 范围={auto_delete_config['delete_scope']}, 检查标签={auto_delete_config['check_tags']}")
         
         if not records_to_check:
             return
@@ -454,7 +455,7 @@ async def check_expired_torrents():
             ).first()
             
             if not downloader:
-                print(f"[Scheduler] 下载器不存在: {record.torrent_name}")
+                logger.info(f" 下载器不存在: {record.torrent_name}")
                 continue
             
             # 获取关联的规则（可能为空，手动上传的种子没有规则）
@@ -472,10 +473,10 @@ async def check_expired_torrents():
             delete_scope = auto_delete_config.get("delete_scope", "all")
             if rule_mode:
                 if delete_scope == "normal" and rule_mode == "adult":
-                    print(f"[Scheduler] 跳过成人种子（设置为仅删除正常种子）: {record.torrent_name}")
+                    logger.info(f" 跳过成人种子（设置为仅删除正常种子）: {record.torrent_name}")
                     continue
                 elif delete_scope == "adult" and rule_mode == "normal":
-                    print(f"[Scheduler] 跳过正常种子（设置为仅删除成人种子）: {record.torrent_name}")
+                    logger.info(f" 跳过正常种子（设置为仅删除成人种子）: {record.torrent_name}")
                     continue
             
             try:
@@ -485,13 +486,13 @@ async def check_expired_torrents():
                 if torrent_info is None:
                     # 种子不存在（可能已被手动删除）
                     record.status = "expired_deleted"
-                    print(f"[Scheduler] 种子已不存在: {record.torrent_name}")
+                    logger.info(f" 种子已不存在: {record.torrent_name}")
                     continue
                 
                 if torrent_info.get("is_completed"):
                     # 已完成，更新状态
                     record.status = "completed"
-                    print(f"[Scheduler] 种子已完成: {record.torrent_name}")
+                    logger.info(f" 种子已完成: {record.torrent_name}")
                     continue
                 
                 # 检查标签是否匹配（根据设置决定是否检查，仅对有规则的种子生效）
@@ -500,29 +501,29 @@ async def check_expired_torrents():
                 
                 if check_tags and rule_tags and not rule_tags.intersection(torrent_tags):
                     # 种子没有规则指定的标签，跳过删除
-                    print(f"[Scheduler] 种子标签不匹配规则，跳过删除: {record.torrent_name} (种子标签: {torrent_tags}, 规则标签: {rule_tags})")
+                    logger.info(f" 种子标签不匹配规则，跳过删除: {record.torrent_name} (种子标签: {torrent_tags}, 规则标签: {rule_tags})")
                     continue
                 
                 # 删除种子（原因：促销过期或非免费）
                 progress = torrent_info.get("progress", 0)
                 mode_info = f"模式: {rule_mode}" if rule_mode else "手动上传"
-                print(f"[Scheduler] 删除种子: {record.torrent_name} (原因: {reason}, {mode_info}, 进度: {progress:.1f}%)")
+                logger.info(f" 删除种子: {record.torrent_name} (原因: {reason}, {mode_info}, 进度: {progress:.1f}%)")
                 
                 success = await delete_torrent(downloader, record.info_hash, delete_files=True)
                 
                 if success:
                     record.status = "expired_deleted"
-                    print(f"[Scheduler] 已删除种子: {record.torrent_name}")
+                    logger.info(f" 已删除种子: {record.torrent_name}")
                 else:
-                    print(f"[Scheduler] 删除种子失败: {record.torrent_name}")
+                    logger.info(f" 删除种子失败: {record.torrent_name}")
                     
             except Exception as e:
-                print(f"[Scheduler] 处理过期种子失败 {record.torrent_name}: {e}")
+                logger.info(f" 处理过期种子失败 {record.torrent_name}: {e}")
         
         db.commit()
         
     except Exception as e:
-        print(f"[Scheduler] 检查过期种子任务失败: {e}")
+        logger.info(f" 检查过期种子任务失败: {e}")
     finally:
         db.close()
 
@@ -558,7 +559,7 @@ async def check_dynamic_delete():
             try:
                 auto_delete_config.update(json.loads(setting.value))
             except json.JSONDecodeError:
-                print(f"[DynamicDelete] 解析自动删种设置失败，使用默认配置")
+                logger.info(f" 解析自动删种设置失败，使用默认配置")
         
         # 如果禁用了动态删种，直接返回
         if not auto_delete_config.get("enable_dynamic_delete", False):
@@ -566,10 +567,10 @@ async def check_dynamic_delete():
         
         # 动态删种必须指定下载器
         if not auto_delete_config.get("downloader_id"):
-            print(f"[DynamicDelete] 动态删种功能已启用，但未指定下载器，跳过")
+            logger.info(f" 动态删种功能已启用，但未指定下载器，跳过")
             return
         
-        print(f"[DynamicDelete] 开始检查动态删种，最大容量: {auto_delete_config['max_capacity_gb']} GB，最小容量: {auto_delete_config['min_capacity_gb']} GB")
+        logger.info(f" 开始检查动态删种，最大容量: {auto_delete_config['max_capacity_gb']} GB，最小容量: {auto_delete_config['min_capacity_gb']} GB")
         
         # 获取指定的下载器
         downloader = db.query(Downloader).filter(
@@ -578,40 +579,40 @@ async def check_dynamic_delete():
         ).first()
         
         if not downloader:
-            print(f"[DynamicDelete] 指定的下载器不存在或未激活: {auto_delete_config['downloader_id']}")
+            logger.info(f" 指定的下载器不存在或未激活: {auto_delete_config['downloader_id']}")
             return
         
         try:
-            print(f"[DynamicDelete] 检查下载器: {downloader.name}")
+            logger.info(f" 检查下载器: {downloader.name}")
             
             # 获取磁盘空间信息
             disk_info = await get_disk_space_info(downloader)
             if not disk_info or "free_space_gb" not in disk_info:
-                print(f"[DynamicDelete] 无法获取下载器 {downloader.name} 的磁盘空间信息")
+                logger.info(f" 无法获取下载器 {downloader.name} 的磁盘空间信息")
                 return
             
             free_space_gb = disk_info["free_space_gb"]
             max_capacity_gb = auto_delete_config["max_capacity_gb"]
             min_capacity_gb = auto_delete_config["min_capacity_gb"]
             
-            print(f"[DynamicDelete] 下载器 {downloader.name} 剩余空间: {free_space_gb:.2f} GB")
-            print(f"[DynamicDelete] 容量阈值: 最大 {max_capacity_gb} GB, 最小 {min_capacity_gb} GB")
+            logger.info(f" 下载器 {downloader.name} 剩余空间: {free_space_gb:.2f} GB")
+            logger.info(f" 容量阈值: 最大 {max_capacity_gb} GB, 最小 {min_capacity_gb} GB")
             
             # 检查是否低于最大容量阈值（剩余空间不足）
             if free_space_gb >= max_capacity_gb:
-                print(f"[DynamicDelete] 下载器 {downloader.name} 剩余空间充足，跳过")
+                logger.info(f" 下载器 {downloader.name} 剩余空间充足，跳过")
                 return
             
-            print(f"[DynamicDelete] 下载器 {downloader.name} 剩余空间不足，开始删种")
+            logger.info(f" 下载器 {downloader.name} 剩余空间不足，开始删种")
             
             # 计算需要释放的空间
             need_to_free_gb = min_capacity_gb - free_space_gb
-            print(f"[DynamicDelete] 需要释放空间: {need_to_free_gb:.2f} GB")
+            logger.info(f" 需要释放空间: {need_to_free_gb:.2f} GB")
             
             # 获取所有种子详细信息
             all_torrents = await get_all_torrents_with_details(downloader)
             if not all_torrents:
-                print(f"[DynamicDelete] 下载器 {downloader.name} 没有种子")
+                logger.info(f" 下载器 {downloader.name} 没有种子")
                 return
             
             # 过滤种子（根据删种范围和标签设置）
@@ -645,7 +646,7 @@ async def check_dynamic_delete():
                 filtered_torrents.append(torrent)
             
             if not filtered_torrents:
-                print(f"[DynamicDelete] 下载器 {downloader.name} 没有符合删除条件的种子")
+                logger.info(f" 下载器 {downloader.name} 没有符合删除条件的种子")
                 return
             
             # 执行删种
@@ -668,13 +669,13 @@ async def check_dynamic_delete():
                         history_record.status = "dynamic_deleted"
                 
                 db.commit()
-                print(f"[DynamicDelete] 下载器 {downloader.name} 动态删种完成，删除了 {len(deleted_hashes)} 个种子")
+                logger.info(f" 下载器 {downloader.name} 动态删种完成，删除了 {len(deleted_hashes)} 个种子")
             
         except Exception as e:
-            print(f"[DynamicDelete] 处理下载器 {downloader.name} 失败: {e}")
+            logger.info(f" 处理下载器 {downloader.name} 失败: {e}")
         
     except Exception as e:
-        print(f"[DynamicDelete] 动态删种任务失败: {e}")
+        logger.info(f" 动态删种任务失败: {e}")
     finally:
         db.close()
 
@@ -755,10 +756,10 @@ async def sync_download_status():
         
         if updated_count > 0:
             db.commit()
-            print(f"[Scheduler] 状态同步完成，更新了 {updated_count} 条记录")
+            logger.info(f" 状态同步完成，更新了 {updated_count} 条记录")
         
     except Exception as e:
-        print(f"[Scheduler] 状态同步任务失败: {e}")
+        logger.info(f" 状态同步任务失败: {e}")
     finally:
         db.close()
 
@@ -808,22 +809,22 @@ def start_scheduler():
     )
     
     scheduler.start()
-    print(f"[Scheduler] 定时任务已启动")
-    print(f"[Scheduler] 账号刷新间隔: {intervals['account_refresh_interval']}秒")
-    print(f"[Scheduler] 种子检查间隔: {intervals['torrent_check_interval']}秒")
-    print(f"[Scheduler] 过期检查间隔: {intervals['expired_check_interval']}秒")
-    print(f"[Scheduler] 状态同步间隔: 60秒")
+    logger.info(f" 定时任务已启动")
+    logger.info(f" 账号刷新间隔: {intervals['account_refresh_interval']}秒")
+    logger.info(f" 种子检查间隔: {intervals['torrent_check_interval']}秒")
+    logger.info(f" 过期检查间隔: {intervals['expired_check_interval']}秒")
+    logger.info(f" 状态同步间隔: 60秒")
 
 
 def stop_scheduler():
     """停止定时任务"""
     scheduler.shutdown()
-    print("[Scheduler] 定时任务已停止")
+    logger.info("定时任务已停止")
 
 
 async def restart_scheduler_with_new_intervals(new_intervals: Dict[str, int]):
     """使用新的间隔设置重启调度器"""
-    print(f"[Scheduler] 正在应用新的刷新间隔设置: {new_intervals}")
+    logger.info(f" 正在应用新的刷新间隔设置: {new_intervals}")
     
     # 更新现有任务的间隔
     if scheduler.running:
@@ -833,7 +834,7 @@ async def restart_scheduler_with_new_intervals(new_intervals: Dict[str, int]):
                 "refresh_accounts",
                 trigger=IntervalTrigger(seconds=new_intervals["account_refresh_interval"])
             )
-            print(f"[Scheduler] 账号刷新间隔已更新为: {new_intervals['account_refresh_interval']}秒")
+            logger.info(f" 账号刷新间隔已更新为: {new_intervals['account_refresh_interval']}秒")
         
         # 更新种子检查任务
         if "torrent_check_interval" in new_intervals:
@@ -841,7 +842,7 @@ async def restart_scheduler_with_new_intervals(new_intervals: Dict[str, int]):
                 "auto_download",
                 trigger=IntervalTrigger(seconds=new_intervals["torrent_check_interval"])
             )
-            print(f"[Scheduler] 种子检查间隔已更新为: {new_intervals['torrent_check_interval']}秒")
+            logger.info(f" 种子检查间隔已更新为: {new_intervals['torrent_check_interval']}秒")
         
         # 更新过期检查任务
         if "expired_check_interval" in new_intervals:
@@ -849,9 +850,9 @@ async def restart_scheduler_with_new_intervals(new_intervals: Dict[str, int]):
                 "check_expired",
                 trigger=IntervalTrigger(seconds=new_intervals["expired_check_interval"])
             )
-            print(f"[Scheduler] 过期检查间隔已更新为: {new_intervals['expired_check_interval']}秒")
+            logger.info(f" 过期检查间隔已更新为: {new_intervals['expired_check_interval']}秒")
     else:
-        print("[Scheduler] 调度器未运行，无法更新间隔")
+        logger.warning("调度器未运行，无法更新间隔")
 
 
 def get_scheduler_status() -> Dict[str, Any]:
