@@ -87,6 +87,14 @@ export const torrentApi = {
     api.get(`/torrents/categories?account_id=${accountId}`),
   getMetadata: (accountId: number, types: string = 'categories') => 
     api.get(`/torrents/metadata?account_id=${accountId}&types=${types}`),
+  // 推送种子到下载器
+  push: (data: {
+    torrent_id: string;
+    downloader_id: number;
+    account_id: number;
+    save_path?: string;
+    tags?: string[];
+  }) => api.post('/torrents/push', data),
 };
 
 // 规则相关

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Table, Button, Select, Input, Tag, message, Form, InputNumber, Card, Row, Col, theme, Tooltip } from 'antd';
-import { SearchOutlined, DownloadOutlined, CloudDownloadOutlined, FileTextOutlined } from '@ant-design/icons';
-import { accountApi, torrentApi } from '../api';
+import { Table, Button, Select, Input, Tag, message, Form, InputNumber, Card, Row, Col, theme, Tooltip, Modal, Space } from 'antd';
+import { SearchOutlined, DownloadOutlined, CloudDownloadOutlined, FileTextOutlined, SendOutlined } from '@ant-design/icons';
+import { accountApi, torrentApi, downloaderApi } from '../api';
 
 const { useToken } = theme;
 
@@ -23,6 +23,13 @@ interface Torrent {
 interface Account {
   id: number;
   username: string;
+}
+
+interface Downloader {
+  id: number;
+  name: string;
+  type: string;
+  is_active: boolean;
 }
 
 const discountOptions = [
@@ -47,13 +54,43 @@ export default function TorrentPage() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [form] = Form.useForm();
+  
+  // 批量选择和推送相关状态
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  const [downloaders, setDownloaders] = useState<Downloader[]>([]);
+  const [pushModalVisible, setPushModalVisible] = useState(false);
+  const [selectedDownloaderId, setSelectedDownloaderId] = useState<number | null>(null);
+  const [pushing, setPushing] = useState(false);
+  const [availableTags, setAvailableTags] = useState<string[]>([]);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [savePath, setSavePath] = useState<string>('');
 
   useEffect(() => {
+    // 加载账号列表
     accountApi.list().then(res => {
       setAccounts(res.data);
       if (res.data.length > 0) setAccountId(res.data[0].id);
     });
+    // 加载下载器列表
+    downloaderApi.list().then(res => {
+      const activeDownloaders = res.data.filter((d: Downloader) => d.is_active);
+      setDownloaders(activeDownloaders);
+      if (activeDownloaders.length > 0) {
+        setSelectedDownloaderId(activeDownloaders[0].id);
+      }
+    });
   }, []);
+
+  // 当选择的下载器变化时，加载其标签
+  useEffect(() => {
+    if (selectedDownloaderId) {
+      downloaderApi.getTags(selectedDownloaderId).then(res => {
+        setAvailableTags(res.data.tags || []);
+      }).catch(() => {
+        setAvailableTags([]);
+      });
+    }
+  }, [selectedDownloaderId]);
 
   const handleSearch = async (values?: any) => {
     if (!accountId) {
@@ -61,17 +98,17 @@ export default function TorrentPage() {
       return;
     }
     setLoading(true);
+    setSelectedRowKeys([]); // 搜索时清空选择
     try {
       const formValues = form.getFieldsValue();
       const params = {
         account_id: accountId,
-        page: values?.page || 1, // 优先使用传入的 page
+        page: values?.page || 1,
         page_size: 20,
         ...formValues,
         ...values,
       };
       
-      // 如果不是翻页操作，重置页码
       if (!values?.page) {
         setPage(1);
         params.page = 1;
@@ -79,7 +116,6 @@ export default function TorrentPage() {
         setPage(values.page);
       }
 
-      // 清理空值
       Object.keys(params).forEach(k => {
         if (params[k] === '' || params[k] === undefined) delete params[k];
       });
@@ -100,6 +136,69 @@ export default function TorrentPage() {
       message.success('已获取下载链接');
     } catch (e) {
       message.error('获取下载链接失败');
+    }
+  };
+
+  // 打开推送弹窗
+  const handleOpenPushModal = () => {
+    if (selectedRowKeys.length === 0) {
+      message.warning('请先选择要推送的种子');
+      return;
+    }
+    if (downloaders.length === 0) {
+      message.warning('没有可用的下载器，请先添加下载器');
+      return;
+    }
+    setPushModalVisible(true);
+  };
+
+  // 单个种子推送
+  const handlePushSingle = async (torrentId: string) => {
+    if (!accountId) return;
+    if (downloaders.length === 0) {
+      message.warning('没有可用的下载器，请先添加下载器');
+      return;
+    }
+    setSelectedRowKeys([torrentId]);
+    setPushModalVisible(true);
+  };
+
+  // 执行推送
+  const handlePush = async () => {
+    if (!accountId || !selectedDownloaderId) {
+      message.warning('请选择下载器');
+      return;
+    }
+    
+    setPushing(true);
+    const results = { success: 0, failed: 0 };
+    
+    for (const torrentId of selectedRowKeys) {
+      try {
+        await torrentApi.push({
+          torrent_id: torrentId as string,
+          downloader_id: selectedDownloaderId,
+          account_id: accountId,
+          save_path: savePath || undefined,
+          tags: selectedTags.length > 0 ? selectedTags : undefined,
+        });
+        results.success++;
+      } catch (e: any) {
+        results.failed++;
+        console.error(`推送种子 ${torrentId} 失败:`, e);
+      }
+    }
+    
+    setPushing(false);
+    setPushModalVisible(false);
+    setSelectedRowKeys([]);
+    setSelectedTags([]);
+    setSavePath('');
+    
+    if (results.failed === 0) {
+      message.success(`成功推送 ${results.success} 个种子到下载器`);
+    } else {
+      message.warning(`推送完成：成功 ${results.success} 个，失败 ${results.failed} 个`);
     }
   };
 
@@ -192,20 +291,36 @@ export default function TorrentPage() {
     {
       title: '操作',
       key: 'action',
-      width: 100,
+      width: 160,
       render: (_: any, r: Torrent) => (
-        <Button 
-          type="primary" 
-          ghost 
-          size="small" 
-          icon={<DownloadOutlined />} 
-          onClick={() => handleDownload(r.id)}
-        >
-          下载
-        </Button>
+        <Space size="small">
+          <Button 
+            type="primary" 
+            ghost 
+            size="small" 
+            icon={<DownloadOutlined />} 
+            onClick={() => handleDownload(r.id)}
+          >
+            下载
+          </Button>
+          <Button
+            size="small"
+            icon={<SendOutlined />}
+            onClick={() => handlePushSingle(r.id)}
+            title="推送到下载器"
+          >
+            推送
+          </Button>
+        </Space>
       ),
     },
   ];
+
+  // 表格行选择配置
+  const rowSelection = {
+    selectedRowKeys,
+    onChange: (keys: React.Key[]) => setSelectedRowKeys(keys),
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
@@ -272,12 +387,24 @@ export default function TorrentPage() {
                 {total > 0 && <Tag color="blue">{total}</Tag>}
             </div>
         }
+        extra={
+          selectedRowKeys.length > 0 && (
+            <Button 
+              type="primary" 
+              icon={<SendOutlined />} 
+              onClick={handleOpenPushModal}
+            >
+              推送选中 ({selectedRowKeys.length})
+            </Button>
+          )
+        }
       >
         <Table
           columns={columns}
           dataSource={torrents}
           rowKey="id"
           loading={loading}
+          rowSelection={rowSelection}
           pagination={{
             current: page,
             total,
@@ -289,6 +416,62 @@ export default function TorrentPage() {
           }}
         />
       </Card>
+
+      {/* 推送到下载器弹窗 */}
+      <Modal
+        title="推送到下载器"
+        open={pushModalVisible}
+        onCancel={() => {
+          setPushModalVisible(false);
+          setSelectedTags([]);
+          setSavePath('');
+        }}
+        onOk={handlePush}
+        confirmLoading={pushing}
+        okText="推送"
+        cancelText="取消"
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div>
+            <div style={{ marginBottom: 8, fontWeight: 500 }}>已选择 {selectedRowKeys.length} 个种子</div>
+          </div>
+          
+          <div>
+            <div style={{ marginBottom: 8 }}>选择下载器</div>
+            <Select
+              style={{ width: '100%' }}
+              value={selectedDownloaderId}
+              onChange={setSelectedDownloaderId}
+              options={downloaders.map(d => ({ 
+                value: d.id, 
+                label: `${d.name} (${d.type})` 
+              }))}
+              placeholder="请选择下载器"
+            />
+          </div>
+          
+          <div>
+            <div style={{ marginBottom: 8 }}>保存路径（可选）</div>
+            <Input
+              value={savePath}
+              onChange={e => setSavePath(e.target.value)}
+              placeholder="留空使用下载器默认路径"
+            />
+          </div>
+          
+          <div>
+            <div style={{ marginBottom: 8 }}>标签（可选）</div>
+            <Select
+              mode="tags"
+              style={{ width: '100%' }}
+              value={selectedTags}
+              onChange={setSelectedTags}
+              options={availableTags.map(t => ({ value: t, label: t }))}
+              placeholder="选择或输入标签"
+            />
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

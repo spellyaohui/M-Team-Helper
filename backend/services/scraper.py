@@ -230,9 +230,32 @@ def parse_torrent(torrent: dict) -> dict:
     """解析种子数据为统一格式"""
     status = torrent.get("status", {})
     discount = status.get("discount", "NORMAL")
-    
-    # 解析促销到期时间
     discount_end_time = status.get("discountEndTime")
+    
+    # 检查是否有全站促销规则（promotionRule）
+    # 如果全站促销比种子本身的促销更优惠，使用全站促销
+    promotion_rule = status.get("promotionRule")
+    if promotion_rule:
+        rule_discount = promotion_rule.get("discount")
+        rule_end_time = promotion_rule.get("endTime")
+        
+        # 促销优先级：FREE > _2X_FREE > PERCENT_50 > _2X > NORMAL
+        discount_priority = {
+            "FREE": 5,
+            "_2X_FREE": 4,
+            "PERCENT_50": 3,
+            "_2X_PERCENT_50": 2,
+            "_2X": 1,
+            "NORMAL": 0
+        }
+        
+        current_priority = discount_priority.get(discount, 0)
+        rule_priority = discount_priority.get(rule_discount, 0)
+        
+        # 如果全站促销更优惠，使用全站促销
+        if rule_priority > current_priority:
+            discount = rule_discount
+            discount_end_time = rule_end_time
     
     return {
         "id": torrent.get("id"),
