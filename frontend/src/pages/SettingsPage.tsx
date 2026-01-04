@@ -1067,7 +1067,7 @@ const SettingsPage: React.FC = () => {
               >
                 <InputNumber<number>
                   min={1}
-                  max={10000}
+                  max={1000000}
                   step={10}
                   style={{ width: '100%' }}
                   placeholder="1000"
@@ -1090,7 +1090,7 @@ const SettingsPage: React.FC = () => {
               >
                 <InputNumber<number>
                   min={1}
-                  max={10000}
+                  max={1000000}
                   step={10}
                   style={{ width: '100%' }}
                   placeholder="800"
