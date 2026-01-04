@@ -335,27 +335,52 @@ async def create_tags(downloader, tags: List[str]) -> bool:
 
 
 def _sync_get_qb_downloading_count(downloader) -> int:
-    """同步获取 qBittorrent 下载中种子数量"""
+    """同步获取 qBittorrent 下载中种子数量
+    
+    统计所有未完成的种子，包括：
+    - downloading: 正在下载
+    - queuedDL: 排队等待下载
+    - stalledDL: 下载停滞（无可用peer）
+    - metaDL: 获取元数据中
+    - pausedDL: 暂停下载
+    - forcedDL: 强制下载
+    - allocating: 分配磁盘空间
+    - checkingDL: 检查中（下载）
+    """
     client = _get_qb_client(downloader)
-    torrents = client.torrents_info(status_filter="downloading")
-    # 只统计真正在活跃下载的种子（state == "downloading"）
-    active_downloading = [t for t in torrents if t.state == "downloading"]
-    return len(active_downloading)
+    # 获取所有种子，然后过滤未完成的
+    torrents = client.torrents_info()
+    # 未完成状态列表（所有下载相关的状态）
+    downloading_states = [
+        "downloading", "queuedDL", "stalledDL", "metaDL", 
+        "pausedDL", "forcedDL", "allocating", "checkingDL"
+    ]
+    incomplete_torrents = [t for t in torrents if t.state in downloading_states]
+    return len(incomplete_torrents)
 
 
 def _sync_get_tr_downloading_count(downloader) -> int:
-    """同步获取 Transmission 下载中种子数量"""
+    """同步获取 Transmission 下载中种子数量
+    
+    统计所有未完成的种子（进度小于100%），包括：
+    - downloading: 正在下载
+    - download pending: 等待下载
+    - stopped: 已停止（但未完成）
+    """
     client = _get_tr_client(downloader)
     torrents = client.get_torrents()
-    # 只统计真正在下载的（进度小于100%且状态为下载中）
-    return len([t for t in torrents if t.progress < 100 and t.status == 'downloading'])
+    # 统计所有未完成的种子（进度小于100%）
+    return len([t for t in torrents if t.progress < 100])
 
 
 async def get_downloading_count(downloader) -> int:
-    """获取正在下载的种子数量
+    """获取未完成的种子数量（用于下载队列限制判断）
+    
+    统计所有未完成的种子，包括：正在下载、排队等待、暂停、停滞等状态。
+    这样可以准确控制下载队列的总数量，避免添加过多种子。
     
     Returns:
-        下载中的种子数量（只统计真正在活跃下载的，排除停滞、暂停、排队等状态）
+        未完成种子的数量
     """
     try:
         if downloader.type == "qbittorrent":
