@@ -80,25 +80,42 @@ export default function RulePage() {
             const categoryData = res.data.data;
             const categoryList = categoryData.list || [];
             
+            // 构建父级分类映射
+            const parentMap: Record<string, string> = {};
+            categoryList.forEach((cat: any) => {
+              if (cat.parent === null) {
+                parentMap[cat.id] = cat.nameCht || cat.nameChs || cat.nameEng;
+              }
+            });
+            
             // 只保留二级分类（有 parent 的分类）
             const secondLevelCategories = categoryList.filter((cat: any) => cat.parent !== null);
             
             // 用 API 返回的 adult 数组判断成人分类
             const adultCategoryIds = new Set((categoryData.adult || []).map((id: any) => String(id)));
             
+            // 成人区的顶级分类 ID
+            const adultParentIds = new Set(['115', '120', '445', '446']);
+            
             let filteredCategories = secondLevelCategories;
             
             if (selectedMode === 'normal') {
-              // 综合区：排除成人分类
+              // 普通区：排除成人分类（父级不在成人区顶级分类中）
               filteredCategories = secondLevelCategories.filter((cat: any) => 
-                !adultCategoryIds.has(String(cat.id))
+                !adultCategoryIds.has(String(cat.id)) && !adultParentIds.has(String(cat.parent))
               );
             } else if (selectedMode === 'adult') {
-              // 成人区：只显示成人分类
+              // 成人区：只显示成人分类（父级在成人区顶级分类中）
               filteredCategories = secondLevelCategories.filter((cat: any) => 
-                adultCategoryIds.has(String(cat.id))
+                adultCategoryIds.has(String(cat.id)) || adultParentIds.has(String(cat.parent))
               );
             }
+            
+            // 为每个分类添加父级名称
+            filteredCategories = filteredCategories.map((cat: any) => ({
+              ...cat,
+              parentName: parentMap[cat.parent] || ''
+            }));
             
             // 按 parent 和 order 排序
             filteredCategories.sort((a: any, b: any) => {
@@ -374,12 +391,12 @@ export default function RulePage() {
           
           <Row gutter={16}>
              <Col span={12}>
-                <Form.Item name="keywords" label="关键词（逗号分隔）">
+                <Form.Item name="keywords" label="关键词（逗号分隔）" tooltip="同时匹配主标题和副标题">
                    <Input placeholder="如：4K,HDR,REMUX" />
                 </Form.Item>
              </Col>
              <Col span={12}>
-                <Form.Item name="exclude_keywords" label="排除关键词">
+                <Form.Item name="exclude_keywords" label="排除关键词" tooltip="同时匹配主标题和副标题">
                    <Input placeholder="如：CAM,TS" />
                 </Form.Item>
              </Col>
@@ -404,7 +421,7 @@ export default function RulePage() {
             <Form.Item 
               name="categories" 
               label="选择分类"
-              tooltip="只下载选中分类的种子。如果不选择任何分类，则下载该模式下的所有分类"
+              tooltip="只下载选中分类的种子。如果不选择任何分类，则下载该模式下的所有分类。关键词会同时匹配主标题和副标题。"
               style={{ marginTop: 8 }}
             >
               <Select
@@ -412,14 +429,29 @@ export default function RulePage() {
                 placeholder={selectedAccountId ? "选择要筛选的分类" : "请先选择账号"}
                 disabled={!selectedAccountId || categoriesLoading}
                 loading={categoriesLoading}
-                options={categories.map(cat => ({
-                  value: cat.id,
-                  label: `${cat.nameChs} (${cat.nameEng})`,
-                  title: cat.nameChs
-                }))}
+                options={(() => {
+                  // 按父级分组
+                  const grouped: Record<string, any[]> = {};
+                  categories.forEach(cat => {
+                    const parentName = cat.parentName || '其他';
+                    if (!grouped[parentName]) {
+                      grouped[parentName] = [];
+                    }
+                    grouped[parentName].push(cat);
+                  });
+                  
+                  // 转换为 Select 的分组格式
+                  return Object.entries(grouped).map(([parentName, cats]) => ({
+                    label: parentName,
+                    options: cats.map(cat => ({
+                      value: cat.id,
+                      label: cat.nameCht || cat.nameChs || cat.nameEng,
+                    }))
+                  }));
+                })()}
                 showSearch
                 filterOption={(input, option) =>
-                  (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                  (option?.label ?? '').toString().toLowerCase().includes(input.toLowerCase())
                 }
               />
             </Form.Item>
