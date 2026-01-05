@@ -51,6 +51,8 @@ interface AutoDeleteSettings {
   max_capacity_gb: number;
   min_capacity_gb: number;
   delete_strategy: 'oldest_first' | 'largest_first' | 'lowest_ratio';
+  // 自动删除被站点删除的种子
+  auto_delete_unregistered: boolean;
 }
 
 interface SchedulerJob {
@@ -895,6 +897,7 @@ const SettingsPage: React.FC = () => {
             max_capacity_gb: 1000,
             min_capacity_gb: 800,
             delete_strategy: 'oldest_first',
+            auto_delete_unregistered: false,
           }}
         >
           {/* 基础设置 */}
@@ -908,7 +911,7 @@ const SettingsPage: React.FC = () => {
           />
           
           <Row gutter={[24, 16]}>
-            <Col xs={24} sm={12} md={8}>
+            <Col xs={24} sm={12} md={6}>
               <Form.Item
                 label="启用自动删种"
                 name="enabled"
@@ -921,7 +924,7 @@ const SettingsPage: React.FC = () => {
               </Form.Item>
             </Col>
             
-            <Col xs={24} sm={12} md={8}>
+            <Col xs={24} sm={12} md={6}>
               <Form.Item
                 label="删种范围"
                 name="delete_scope"
@@ -935,7 +938,7 @@ const SettingsPage: React.FC = () => {
               </Form.Item>
             </Col>
             
-            <Col xs={24} sm={12} md={8}>
+            <Col xs={24} sm={12} md={6}>
               <Form.Item
                 label="检查标签匹配"
                 name="check_tags"
@@ -945,6 +948,26 @@ const SettingsPage: React.FC = () => {
                 <Switch 
                   checkedChildren="检查" 
                   unCheckedChildren="忽略"
+                />
+              </Form.Item>
+            </Col>
+            
+            <Col xs={24} sm={12} md={6}>
+              <Form.Item
+                label={
+                  <Space>
+                    <span>删除站点已删种子</span>
+                    <Tooltip title="自动删除被站点删除的种子（Tracker 返回 unregistered 错误）">
+                      <InfoCircleOutlined />
+                    </Tooltip>
+                  </Space>
+                }
+                name="auto_delete_unregistered"
+                valuePropName="checked"
+              >
+                <Switch 
+                  checkedChildren="开启" 
+                  unCheckedChildren="关闭"
                 />
               </Form.Item>
             </Col>

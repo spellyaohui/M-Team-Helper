@@ -29,6 +29,8 @@ class AutoDeleteSettings(BaseModel):
     max_capacity_gb: float = 1000.0  # 最大容量阈值（GB）
     min_capacity_gb: float = 800.0   # 最小容量阈值（GB）
     delete_strategy: str = "oldest_first"  # 删除策略：oldest_first(最旧优先), largest_first(最大优先), lowest_ratio(最低分享率优先)
+    # 新增：自动删除被站点删除的种子
+    auto_delete_unregistered: bool = False  # 是否自动删除被站点删除的种子（Tracker 返回 unregistered）
 
 class RefreshIntervalSettings(BaseModel):
     """刷新间隔设置"""

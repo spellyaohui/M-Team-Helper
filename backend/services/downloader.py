@@ -834,3 +834,129 @@ async def get_server_stats(downloader) -> Optional[Dict[str, Any]]:
     except Exception as e:
         print(f"[Downloader] 获取服务器统计信息失败: {e}")
         return None
+
+
+def _sync_get_qb_torrent_trackers(downloader, info_hash: str) -> List[Dict[str, Any]]:
+    """同步获取 qBittorrent 种子的 Tracker 信息"""
+    client = _get_qb_client(downloader)
+    trackers = client.torrents_trackers(info_hash)
+    
+    result = []
+    for tracker in trackers:
+        if tracker.url and 'http' in tracker.url:
+            result.append({
+                "url": tracker.url,
+                "status": tracker.status,
+                "msg": tracker.msg,
+                "num_peers": tracker.num_peers
+            })
+    return result
+
+
+def _sync_get_tr_torrent_trackers(downloader, info_hash: str) -> List[Dict[str, Any]]:
+    """同步获取 Transmission 种子的 Tracker 信息"""
+    client = _get_tr_client(downloader)
+    torrents = client.get_torrents(ids=[info_hash])
+    
+    if not torrents:
+        return []
+    
+    t = torrents[0]
+    result = []
+    
+    # Transmission 的 tracker_stats 包含 Tracker 状态信息
+    if hasattr(t, 'tracker_stats') and t.tracker_stats:
+        for tracker in t.tracker_stats:
+            result.append({
+                "url": tracker.get('announce', ''),
+                "status": 2 if tracker.get('lastAnnounceSucceeded', False) else 4,  # 2=工作中, 4=错误
+                "msg": tracker.get('lastAnnounceResult', ''),
+                "num_peers": tracker.get('seederCount', 0) + tracker.get('leecherCount', 0)
+            })
+    
+    return result
+
+
+async def get_torrent_trackers(downloader, info_hash: str) -> List[Dict[str, Any]]:
+    """获取种子的 Tracker 信息
+    
+    Args:
+        downloader: 下载器配置对象
+        info_hash: 种子哈希
+    
+    Returns:
+        Tracker 信息列表，每个包含 url, status, msg, num_peers
+        status: 0=禁用, 1=未联系, 2=工作中, 3=更新中, 4=错误
+    """
+    try:
+        if downloader.type == "qbittorrent":
+            return await asyncio.to_thread(_sync_get_qb_torrent_trackers, downloader, info_hash)
+        
+        elif downloader.type == "transmission":
+            return await asyncio.to_thread(_sync_get_tr_torrent_trackers, downloader, info_hash)
+        
+        return []
+    
+    except Exception as e:
+        print(f"[Downloader] 获取 Tracker 信息失败: {e}")
+        return []
+
+
+def is_torrent_unregistered(tracker_msg: str) -> bool:
+    """检查 Tracker 消息是否表示种子已被站点删除
+    
+    常见的 unregistered 消息：
+    - "torrent not registered with this tracker"
+    - "Torrent not found"
+    - "unregistered torrent"
+    - "torrent is not authorized for use on this tracker"
+    
+    Args:
+        tracker_msg: Tracker 返回的消息
+    
+    Returns:
+        是否为 unregistered 状态
+    """
+    if not tracker_msg:
+        return False
+    
+    msg_lower = tracker_msg.lower()
+    unregistered_keywords = [
+        "not registered",
+        "not found",
+        "unregistered",
+        "not authorized",
+        "torrent not exist",
+        "torrent does not exist",
+        "invalid torrent",
+        "torrent deleted"
+    ]
+    
+    return any(keyword in msg_lower for keyword in unregistered_keywords)
+
+
+async def check_torrent_unregistered(downloader, info_hash: str) -> bool:
+    """检查种子是否已被站点删除（Tracker 返回 unregistered）
+    
+    Args:
+        downloader: 下载器配置对象
+        info_hash: 种子哈希
+    
+    Returns:
+        是否已被站点删除
+    """
+    try:
+        trackers = await get_torrent_trackers(downloader, info_hash)
+        
+        for tracker in trackers:
+            # status=4 表示错误状态
+            if tracker.get("status") == 4:
+                msg = tracker.get("msg", "")
+                if is_torrent_unregistered(msg):
+                    return True
+        
+        return False
+    
+    except Exception as e:
+        print(f"[Downloader] 检查种子 unregistered 状态失败: {e}")
+        return False

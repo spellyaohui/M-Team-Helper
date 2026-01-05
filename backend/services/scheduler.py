@@ -8,7 +8,7 @@ import json
 from database import SessionLocal
 from models import Account, FilterRule, DownloadHistory, Downloader, SystemSettings, beijing_now
 from services.scraper import MTeamAPI, parse_torrent
-from services.downloader import add_torrent, get_torrent_info, delete_torrent, get_downloading_count, get_torrent_info_with_tags, get_all_torrents_with_details, get_downloader_total_size, delete_torrents_by_strategy, delete_torrents_by_free_space, get_disk_space_info
+from services.downloader import add_torrent, get_torrent_info, delete_torrent, get_downloading_count, get_torrent_info_with_tags, get_all_torrents_with_details, get_downloader_total_size, delete_torrents_by_strategy, delete_torrents_by_free_space, get_disk_space_info, check_torrent_unregistered, get_torrent_trackers
 from routers.rules import match_torrent
 from config import settings, TORRENT_DIR
 from utils.logger import scheduler_logger as logger
@@ -691,6 +691,111 @@ async def check_dynamic_delete():
         db.close()
 
 
+async def check_unregistered_torrents():
+    """检查并删除被站点删除的种子（Tracker 返回 unregistered）
+    
+    当种子被站点删除后，Tracker 会返回 "torrent not registered" 等错误消息。
+    这个任务会检查所有种子的 Tracker 状态，自动删除已被站点删除的种子。
+    """
+    # 记录执行时间
+    last_execution_times["check_unregistered"] = beijing_now()
+    
+    db = SessionLocal()
+    try:
+        # 获取自动删种设置
+        from models import SystemSettings
+        import json
+        
+        setting = db.query(SystemSettings).filter(
+            SystemSettings.key == "auto_delete_expired"
+        ).first()
+        
+        # 默认设置
+        auto_delete_config = {
+            "enabled": True,
+            "auto_delete_unregistered": False
+        }
+        
+        if setting:
+            try:
+                auto_delete_config.update(json.loads(setting.value))
+            except json.JSONDecodeError:
+                logger.warning("解析自动删种设置失败，使用默认配置")
+        
+        # 如果未启用自动删除未注册种子，直接返回
+        if not auto_delete_config.get("auto_delete_unregistered", False):
+            return
+        
+        logger.info("开始检查被站点删除的种子（Tracker unregistered）")
+        
+        # 获取所有活跃的下载器
+        downloaders = db.query(Downloader).filter(Downloader.is_active == True).all()
+        
+        if not downloaders:
+            logger.info("没有活跃的下载器，跳过检查")
+            return
+        
+        total_deleted = 0
+        
+        for downloader in downloaders:
+            try:
+                logger.info(f"检查下载器: {downloader.name}")
+                
+                # 获取该下载器的所有种子
+                all_torrents = await get_all_torrents_with_details(downloader)
+                
+                if not all_torrents:
+                    continue
+                
+                logger.info(f"下载器 {downloader.name} 共有 {len(all_torrents)} 个种子")
+                
+                for torrent in all_torrents:
+                    try:
+                        # 检查种子是否被站点删除
+                        is_unregistered = await check_torrent_unregistered(downloader, torrent["hash"])
+                        
+                        if is_unregistered:
+                            logger.info(f"发现被站点删除的种子: {torrent['name']}")
+                            
+                            # 删除种子（包含文件）
+                            success = await delete_torrent(downloader, torrent["hash"], delete_files=True)
+                            
+                            if success:
+                                total_deleted += 1
+                                logger.info(f"已删除被站点删除的种子: {torrent['name']}")
+                                
+                                # 更新下载历史状态
+                                history_record = db.query(DownloadHistory).filter(
+                                    DownloadHistory.info_hash == torrent["hash"],
+                                    DownloadHistory.downloader_id == downloader.id
+                                ).first()
+                                
+                                if history_record:
+                                    history_record.status = "unregistered_deleted"
+                            else:
+                                logger.warning(f"删除种子失败: {torrent['name']}")
+                    
+                    except Exception as e:
+                        logger.error(f"检查种子 {torrent['name']} 失败: {e}")
+                        continue
+                
+            except Exception as e:
+                logger.error(f"处理下载器 {downloader.name} 失败: {e}")
+                continue
+        
+        db.commit()
+        
+        if total_deleted > 0:
+            logger.info(f"检查完成，共删除 {total_deleted} 个被站点删除的种子")
+        else:
+            logger.info("检查完成，没有发现被站点删除的种子")
+        
+    except Exception as e:
+        logger.error(f"检查未注册种子任务失败: {e}")
+    finally:
+        db.close()
+
+
 async def sync_download_status():
     """定时同步下载历史状态
     
@@ -816,6 +921,14 @@ def start_scheduler():
         sync_download_status,
         IntervalTrigger(seconds=60),  # 1分钟
         id="sync_status",
+        replace_existing=True
+    )
+    
+    # 检查被站点删除的种子任务（每10分钟执行一次）
+    scheduler.add_job(
+        check_unregistered_torrents,
+        IntervalTrigger(seconds=600),  # 10分钟
+        id="check_unregistered",
         replace_existing=True
     )
     
