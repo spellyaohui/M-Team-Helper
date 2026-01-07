@@ -1,0 +1,51 @@
+2026-01-05 08:42:41 [INFO] scheduler:  定时任务已启动
+2026-01-05 08:42:41 [INFO] scheduler:  账号刷新间隔: 300秒
+2026-01-05 08:42:41 [INFO] scheduler:  种子检查间隔: 60秒
+2026-01-05 08:42:41 [INFO] scheduler:  过期检查间隔: 60秒
+2026-01-05 08:42:41 [INFO] scheduler:  状态同步间隔: 60秒
+2026-01-05 08:43:41 [INFO] scheduler: 自动下载任务在当前时间段被禁用，跳过
+2026-01-05 08:43:41 [INFO] scheduler:  检查下载中的非免费/过期种子，找到 0 个需要处理
+2026-01-05 08:43:41 [INFO] scheduler:  删种设置: 启用=True, 范围=all, 检查标签=False
+2026-01-05 08:44:21 [INFO] scheduler:  状态同步完成，更新了 149 条记录
+2026-01-05 08:44:41 [INFO] scheduler: 自动下载任务在当前时间段被禁用，跳过
+2026-01-05 08:44:41 [INFO] scheduler:  检查下载中的非免费/过期种子，找到 0 个需要处理
+2026-01-05 08:44:41 [INFO] scheduler:  删种设置: 启用=True, 范围=all, 检查标签=False
+2026-01-05 08:45:41 [INFO] scheduler: 规则 '测试刷流' 开始访问网站搜索种子，discount=None
+2026-01-05 08:45:41 [INFO] scheduler:  检查下载中的非免费/过期种子，找到 0 个需要处理
+2026-01-05 08:45:41 [INFO] scheduler:  删种设置: 启用=True, 范围=all, 检查标签=False
+2026-01-05 08:45:42 [INFO] scheduler: 规则 '测试刷流' 获取到 50 个种子
+2026-01-05 08:45:43 [INFO] scheduler: 匹配规则 '测试刷流': KBS2 We Have Got a Delivery 20251029 HDTV 1080i AC3 MP2-TPTV
+2026-01-05 08:45:48 [INFO] scheduler: 推送到下载器: True, hash: 958708ceecdc0ff9830b5c8fbe41647e43b01650
+2026-01-05 08:45:48 [INFO] scheduler: 匹配规则 '测试刷流': KBS2 Walking on Thin Ice 20250927 HDTV 1080i AC3 MP2-TPTV
+2026-01-05 08:45:53 [INFO] scheduler: 推送到下载器: True, hash: 4307a6e06c0ea64f341a3db7a1f3a8d4b72a5caa
+2026-01-05 08:45:53 [INFO] scheduler: 匹配规则 '测试刷流': KBS2 Walk Expedition 20250924 HDTV 1080i AC3 MP2-TPTV
+2026-01-05 08:45:57 [INFO] scheduler: 推送到下载器: True, hash: 3ca96a57e4d62dc2be0228c7e5dba0561f15265c
+2026-01-05 08:45:57 [INFO] scheduler: 匹配规则 '测试刷流': KBS2 Twelve 20250907 HDTV 1080i AC3 MP2-TPTV
+2026-01-05 08:46:01 [INFO] scheduler: 推送到下载器: True, hash: 108557b6f9980e10e0ad5ff52814b85c90c691f6
+2026-01-05 08:46:01 [INFO] scheduler: 匹配规则 '测试刷流': KBS2 The Seasons 10CMs Pat Pat 20251010 HDTV 1080i AC3 MP2-TPTV
+2026-01-05 08:46:05 [INFO] scheduler: 推送到下载器: True, hash: f13c68f4211a09e26c9f397fcb8f9126e10d4adf
+2026-01-05 08:46:05 [INFO] scheduler: 匹配规则 '测试刷流': KBS2 The Return of Superman 20251105 HDTV 1080i AC3 MP2-TPTV
+2026-01-05 08:46:09 [INFO] scheduler: 推送到下载器: True, hash: fa146570c88c8eb6c5efdc454a544f31e6fa99e1
+2026-01-05 08:46:09 [INFO] scheduler: 匹配规则 '测试刷流': KBS2 The First Night with the Duke 20250702 HDTV 1080i AC3 MP2-TPTV
+2026-01-05 08:46:13 [INFO] scheduler: 推送到下载器: True, hash: 45812886a1206e1a99fd35fdc3d4f85e26a51c51
+2026-01-05 08:46:13 [INFO] scheduler: 匹配规则 '测试刷流': KBS2 Smoking Gun 20251104 HDTV 1080i AC3 MP2-TPTV
+2026-01-05 08:46:17 [INFO] scheduler: 推送到下载器: True, hash: a04a2c91b44312768c571355430e809f4aa6d12c
+2026-01-05 08:46:17 [INFO] scheduler: 匹配规则 '测试刷流': KBS2 Queen's House 20250902 HDTV 1080i AC3 MP2-TPTV
+2026-01-05 08:46:22 [INFO] scheduler: 推送到下载器: True, hash: 1a8e3680bfac49d33fbbc75f1d877f9e969addb9
+2026-01-05 08:46:22 [INFO] scheduler: 匹配规则 '测试刷流': KBS2 Queen's House 20250901 HDTV 1080i AC3 MP2-TPTV
+2026-01-05 08:46:27 [INFO] scheduler: 推送到下载器: True, hash: 431419fea1394dd54781add025a2a6cfc090f95e
+2026-01-05 08:46:27 [INFO] scheduler: 匹配规则 '测试刷流': KBS2 Pursuing Old Encounters 20250804 HDTV 1080i AC3 MP2-TPTV
+2026-01-05 08:46:32 [INFO] scheduler: 推送到下载器: True, hash: 00d739892109ecd9c06291f815ba4375e2adddfd
+2026-01-05 08:46:32 [INFO] scheduler: 匹配规则 '测试刷流': KBS2 Problem Child in House 20251120 HDTV 1080i AC3 MP2-TPTV
+2026-01-05 08:46:37 [INFO] scheduler: 推送到下载器: True, hash: db810dad6fa1d1e02d62eb6ce88433cc5356893b
+2026-01-05 08:46:37 [INFO] scheduler: 规则 '测试刷流' 过滤统计: 本地历史=0, 网站历史=0, 规则不匹配=38, 本次推送=12
+2026-01-05 08:46:41 [INFO] scheduler: 规则 '测试刷流' 开始访问网站搜索种子，discount=None
+2026-01-05 08:46:41 [INFO] scheduler:  检查下载中的非免费/过期种子，找到 0 个需要处理
+2026-01-05 08:46:41 [INFO] scheduler:  删种设置: 启用=True, 范围=all, 检查标签=False
+2026-01-05 08:46:42 [INFO] scheduler: 规则 '测试刷流' 获取到 50 个种子
+2026-01-05 08:46:43 [INFO] scheduler: 规则 '测试刷流' 过滤统计: 本地历史=12, 网站历史=0, 规则不匹配=38, 本次推送=0
+2026-01-05 08:47:41 [INFO] scheduler: 规则 '测试刷流' 开始访问网站搜索种子，discount=None
+2026-01-05 08:47:42 [INFO] scheduler: 规则 '测试刷流' 获取到 50 个种子
+2026-01-05 08:47:43 [INFO] scheduler: 刷新账号 yaohui 成功
+2026-01-05 08:47:44 [INFO] scheduler: 规则 '测试刷流' 过滤统计: 本地历史=12, 网站历史=0, 规则不匹配=38, 本次推送=0
+2026-01-05 08:48:16 [INFO] scheduler: 定时任务已停止

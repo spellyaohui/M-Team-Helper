@@ -74,35 +74,37 @@ class DashboardData(BaseModel):
 async def get_dashboard_data(db: Session = Depends(get_db)):
     """获取仪表盘数据"""
     
-    # 优化：使用单个查询获取所有统计数据
     from sqlalchemy import func, case
     
-    # 系统统计 - 合并查询
-    stats_query = db.query(
-        func.count(Account.id).label('total_accounts'),
-        func.sum(case((Account.is_active == True, 1), else_=0)).label('active_accounts'),
-        func.count(FilterRule.id).label('total_rules'),
-        func.sum(case((FilterRule.is_enabled == True, 1), else_=0)).label('active_rules'),
-        func.count(Downloader.id).label('total_downloaders'),
-        func.sum(case((Downloader.is_active == True, 1), else_=0)).label('active_downloaders')
-    ).select_from(Account).outerjoin(FilterRule).outerjoin(Downloader).first()
+    # 系统统计 - 分开查询各个表，避免 JOIN 导致的重复计数问题
+    # 账号统计
+    total_accounts = db.query(func.count(Account.id)).scalar() or 0
+    active_accounts = db.query(func.count(Account.id)).filter(Account.is_active == True).scalar() or 0
+    
+    # 规则统计
+    total_rules = db.query(func.count(FilterRule.id)).scalar() or 0
+    active_rules = db.query(func.count(FilterRule.id)).filter(FilterRule.is_enabled == True).scalar() or 0
+    
+    # 下载器统计
+    total_downloaders = db.query(func.count(Downloader.id)).scalar() or 0
+    active_downloaders = db.query(func.count(Downloader.id)).filter(Downloader.is_active == True).scalar() or 0
     
     # 下载历史统计
-    total_downloads = db.query(DownloadHistory).count()
+    total_downloads = db.query(func.count(DownloadHistory.id)).scalar() or 0
     
     # 最近24小时下载数
     yesterday = beijing_now() - timedelta(days=1)
-    recent_downloads = db.query(DownloadHistory).filter(
+    recent_downloads = db.query(func.count(DownloadHistory.id)).filter(
         DownloadHistory.created_at >= yesterday
-    ).count()
+    ).scalar() or 0
     
     system_stats = SystemStats(
-        total_accounts=stats_query.total_accounts or 0,
-        active_accounts=stats_query.active_accounts or 0,
-        total_rules=stats_query.total_rules or 0,
-        active_rules=stats_query.active_rules or 0,
-        total_downloaders=stats_query.total_downloaders or 0,
-        active_downloaders=stats_query.active_downloaders or 0,
+        total_accounts=total_accounts,
+        active_accounts=active_accounts,
+        total_rules=total_rules,
+        active_rules=active_rules,
+        total_downloaders=total_downloaders,
+        active_downloaders=active_downloaders,
         total_downloads=total_downloads,
         recent_downloads=recent_downloads
     )
