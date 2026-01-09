@@ -655,6 +655,19 @@ async def delete_torrents_by_free_space(
         if need_to_free_gb <= 0:
             return []
         
+        if not torrents:
+            print(f"[DynamicDelete] 没有可删除的种子")
+            return []
+        
+        # 计算所有种子的总大小
+        total_size_gb = sum(t["size"] for t in torrents) / (1024 ** 3)
+        print(f"[DynamicDelete] 可删除种子总数: {len(torrents)}，总大小: {total_size_gb:.2f} GB")
+        
+        # 安全检查：如果需要释放的空间大于所有种子总大小，说明配置可能有问题
+        if need_to_free_gb > total_size_gb:
+            print(f"[DynamicDelete] 警告：需要释放 {need_to_free_gb:.2f} GB，但可删除种子总大小仅 {total_size_gb:.2f} GB")
+            print(f"[DynamicDelete] 将只删除到释放 {total_size_gb:.2f} GB 为止")
+        
         # 根据策略排序种子
         if strategy == "oldest_first":
             sorted_torrents = sorted(torrents, key=lambda x: x["added_on"])
@@ -669,17 +682,22 @@ async def delete_torrents_by_free_space(
         freed_space_gb = 0.0
         
         for torrent in sorted_torrents:
+            # 已释放足够空间，停止删除
             if freed_space_gb >= need_to_free_gb:
                 break
+            
+            torrent_size_gb = torrent["size"] / (1024 ** 3)
+            print(f"[DynamicDelete] 正在删除: {torrent['name']} ({torrent_size_gb:.2f} GB)")
             
             success = await delete_torrent(downloader, torrent["hash"], delete_files=True)
             if success:
                 deleted_hashes.append(torrent["hash"])
-                torrent_size_gb = torrent["size"] / (1024 ** 3)
                 freed_space_gb += torrent_size_gb
-                print(f"[DynamicDelete] 已删除种子: {torrent['name']} ({torrent_size_gb:.2f} GB)")
+                print(f"[DynamicDelete] 已删除种子: {torrent['name']}，累计释放: {freed_space_gb:.2f} GB")
+            else:
+                print(f"[DynamicDelete] 删除失败: {torrent['name']}")
         
-        print(f"[DynamicDelete] 共删除 {len(deleted_hashes)} 个种子，释放 {freed_space_gb:.2f} GB 空间")
+        print(f"[DynamicDelete] 删种完成，共删除 {len(deleted_hashes)} 个种子，释放 {freed_space_gb:.2f} GB 空间")
         return deleted_hashes
     
     except Exception as e:
