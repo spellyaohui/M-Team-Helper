@@ -253,7 +253,14 @@ export default function DashboardPage() {
       },
     },
     tooltip: {
-      showMarkers: false,
+      showMarkers: true,
+      items: [
+        {
+          channel: 'y',
+          name: '下载数量',
+          valueFormatter: (value: number) => `${value} 个`,
+        },
+      ],
     },
     areaStyle: () => {
       return {
