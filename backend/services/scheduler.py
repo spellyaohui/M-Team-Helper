@@ -2,6 +2,7 @@ from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Any
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
+from apscheduler.triggers.date import DateTrigger
 from sqlalchemy.orm import Session
 import json
 
@@ -15,8 +16,178 @@ from utils.logger import scheduler_logger as logger
 
 scheduler = AsyncIOScheduler()
 
+# 到期前提前删除的时间（秒）
+EXPIRE_DELETE_ADVANCE_SECONDS = 300  # 5分钟
+
 # 记录任务上次执行时间
 last_execution_times = {}
+
+
+def schedule_precise_delete(history_id: int, torrent_name: str, discount_end_time: datetime, info_hash: str):
+    """为单个种子调度精准删种任务
+    
+    使用 APScheduler 的 date 触发器，在促销到期前 5 分钟执行删除。
+    APScheduler 内部使用堆结构管理任务，即使有大量任务也不会阻塞。
+    
+    Args:
+        history_id: 下载历史记录 ID
+        torrent_name: 种子名称（用于日志）
+        discount_end_time: 促销到期时间
+        info_hash: 种子的 info_hash
+    """
+    # 计算删除时间：到期前 5 分钟
+    delete_time = discount_end_time - timedelta(seconds=EXPIRE_DELETE_ADVANCE_SECONDS)
+    now = beijing_now()
+    
+    # 如果删除时间已经过了，跳过调度（让定时检查任务处理）
+    if delete_time <= now:
+        logger.info(f"种子 {torrent_name} 的删除时间已过，跳过精准调度")
+        return
+    
+    # 使用 history_id 作为 job_id，确保唯一性和可追踪
+    job_id = f"precise_delete_{history_id}"
+    
+    # 检查是否已存在相同任务，避免重复调度
+    existing_job = scheduler.get_job(job_id)
+    if existing_job:
+        logger.debug(f"种子 {torrent_name} 的精准删种任务已存在，跳过")
+        return
+    
+    # 添加一次性任务
+    scheduler.add_job(
+        execute_precise_delete,
+        trigger=DateTrigger(run_date=delete_time),
+        id=job_id,
+        args=[history_id, torrent_name, info_hash],
+        replace_existing=True,
+        misfire_grace_time=60  # 允许 60 秒的延迟执行
+    )
+    
+    logger.info(f"已调度精准删种: {torrent_name}, 将在 {delete_time.strftime('%Y-%m-%d %H:%M:%S')} 执行")
+
+
+async def execute_precise_delete(history_id: int, torrent_name: str, info_hash: str):
+    """执行精准删种
+    
+    这是 APScheduler 调度的回调函数，在促销到期前执行。
+    """
+    logger.info(f"执行精准删种: {torrent_name}")
+    
+    db = SessionLocal()
+    try:
+        # 获取下载历史记录
+        record = db.query(DownloadHistory).filter(DownloadHistory.id == history_id).first()
+        
+        if not record:
+            logger.warning(f"精准删种: 找不到历史记录 {history_id}")
+            return
+        
+        # 检查状态，只删除下载中的种子
+        downloading_statuses = ["downloading", "pending", "pushing", "queued", "paused"]
+        if record.status not in downloading_statuses:
+            logger.info(f"精准删种: 种子 {torrent_name} 状态为 {record.status}，跳过删除")
+            return
+        
+        # 获取下载器
+        if not record.downloader_id:
+            logger.warning(f"精准删种: 种子 {torrent_name} 没有关联下载器")
+            return
+        
+        downloader = db.query(Downloader).filter(Downloader.id == record.downloader_id).first()
+        if not downloader:
+            logger.warning(f"精准删种: 下载器不存在")
+            return
+        
+        # 获取自动删种设置，检查是否启用
+        setting = db.query(SystemSettings).filter(
+            SystemSettings.key == "auto_delete_expired"
+        ).first()
+        
+        auto_delete_config = {"enabled": True, "delete_scope": "all", "check_tags": True}
+        if setting:
+            try:
+                auto_delete_config.update(json.loads(setting.value))
+            except json.JSONDecodeError:
+                pass
+        
+        if not auto_delete_config.get("enabled", True):
+            logger.info(f"精准删种: 自动删种功能已禁用，跳过 {torrent_name}")
+            return
+        
+        # 检查删种范围
+        delete_scope = auto_delete_config.get("delete_scope", "all")
+        if record.rule_id:
+            rule = db.query(FilterRule).filter(FilterRule.id == record.rule_id).first()
+            if rule:
+                if delete_scope == "normal" and rule.mode == "adult":
+                    logger.info(f"精准删种: 跳过成人种子 {torrent_name}")
+                    return
+                elif delete_scope == "adult" and rule.mode == "normal":
+                    logger.info(f"精准删种: 跳过正常种子 {torrent_name}")
+                    return
+        
+        # 检查种子是否还在下载器中
+        torrent_info = await get_torrent_info_with_tags(downloader, info_hash)
+        
+        if torrent_info is None:
+            record.status = "expired_deleted"
+            logger.info(f"精准删种: 种子 {torrent_name} 已不存在")
+            db.commit()
+            return
+        
+        if torrent_info.get("is_completed"):
+            record.status = "completed"
+            logger.info(f"精准删种: 种子 {torrent_name} 已完成下载")
+            db.commit()
+            return
+        
+        # 执行删除
+        progress = torrent_info.get("progress", 0)
+        logger.info(f"精准删种: 删除种子 {torrent_name} (进度: {progress:.1f}%)")
+        
+        success = await delete_torrent(downloader, info_hash, delete_files=True)
+        
+        if success:
+            record.status = "expired_deleted"
+            logger.info(f"精准删种: 已删除种子 {torrent_name}")
+        else:
+            logger.warning(f"精准删种: 删除种子失败 {torrent_name}")
+        
+        db.commit()
+        
+    except Exception as e:
+        logger.error(f"精准删种执行失败 {torrent_name}: {e}")
+    finally:
+        db.close()
+
+
+def cancel_precise_delete(history_id: int):
+    """取消精准删种任务
+    
+    当种子下载完成或被手动删除时调用。
+    """
+    job_id = f"precise_delete_{history_id}"
+    try:
+        job = scheduler.get_job(job_id)
+        if job:
+            scheduler.remove_job(job_id)
+            logger.debug(f"已取消精准删种任务: {job_id}")
+    except Exception as e:
+        logger.debug(f"取消精准删种任务失败: {e}")
+
+
+def get_precise_delete_jobs() -> List[Dict[str, Any]]:
+    """获取所有精准删种任务的信息"""
+    jobs = []
+    for job in scheduler.get_jobs():
+        if job.id.startswith("precise_delete_"):
+            jobs.append({
+                "id": job.id,
+                "next_run": job.next_run_time.isoformat() if job.next_run_time else None,
+                "args": job.args
+            })
+    return jobs
+
 
 def get_refresh_intervals() -> Dict[str, int]:
     """获取刷新间隔设置"""
@@ -362,6 +533,15 @@ async def auto_download_torrents():
                     )
                     db.add(history)
                     db.commit()
+                    
+                    # 如果有促销到期时间且推送成功，调度精准删种任务
+                    if discount_end_time and info_hash:
+                        schedule_precise_delete(
+                            history_id=history.id,
+                            torrent_name=torrent["name"],
+                            discount_end_time=discount_end_time,
+                            info_hash=info_hash
+                        )
                 
                 # 输出过滤统计
                 logger.info(f"规则 '{rule.name}' 过滤统计: 本地历史={skip_local_history}, 网站历史={skip_tracker_history}, 规则不匹配={skip_rule_mismatch}, 本次推送={pushed_count_this_run}")
@@ -841,6 +1021,8 @@ async def sync_download_status():
                     if record.status != "deleted":
                         record.status = "deleted"
                         updated_count += 1
+                        # 取消精准删种任务
+                        cancel_precise_delete(record.id)
                 else:
                     # 根据种子状态更新记录状态
                     progress = torrent_info.get("progress", 0)
@@ -854,6 +1036,8 @@ async def sync_download_status():
                             new_status = "seeding"  # 做种中
                         else:
                             new_status = "completed"  # 已完成
+                        # 种子已完成，取消精准删种任务
+                        cancel_precise_delete(record.id)
                     elif progress > 0:
                         # 下载中
                         if qb_state in ["downloading", "stalledDL", "queuedDL", "metaDL", "forcedDL"]:
@@ -947,6 +1131,46 @@ def start_scheduler():
     logger.info(f" 种子检查间隔: {intervals['torrent_check_interval']}秒")
     logger.info(f" 过期检查间隔: {intervals['expired_check_interval']}秒")
     logger.info(f" 状态同步间隔: 60秒")
+    
+    # 恢复精准删种任务（服务重启后需要重新调度）
+    restore_precise_delete_jobs()
+
+
+def restore_precise_delete_jobs():
+    """恢复精准删种任务
+    
+    服务重启后，需要为所有下载中且有到期时间的种子重新调度精准删种任务。
+    """
+    db = SessionLocal()
+    try:
+        now = beijing_now()
+        downloading_statuses = ["downloading", "pending", "pushing", "queued", "paused"]
+        
+        # 查找所有下载中且有到期时间的记录
+        records = db.query(DownloadHistory).filter(
+            DownloadHistory.status.in_(downloading_statuses),
+            DownloadHistory.info_hash != None,
+            DownloadHistory.discount_end_time != None
+        ).all()
+        
+        scheduled_count = 0
+        for record in records:
+            # 只调度还未到期的种子
+            if record.discount_end_time > now:
+                schedule_precise_delete(
+                    history_id=record.id,
+                    torrent_name=record.torrent_name,
+                    discount_end_time=record.discount_end_time,
+                    info_hash=record.info_hash
+                )
+                scheduled_count += 1
+        
+        if scheduled_count > 0:
+            logger.info(f"已恢复 {scheduled_count} 个精准删种任务")
+    except Exception as e:
+        logger.error(f"恢复精准删种任务失败: {e}")
+    finally:
+        db.close()
 
 
 def stop_scheduler():
@@ -1037,6 +1261,11 @@ def get_scheduler_status() -> Dict[str, Any]:
             "enabled": schedule_control.get("enabled", False),
             "current_status": current_status,
             "time_ranges": schedule_control.get("time_ranges", [])
+        },
+        "precise_delete": {
+            "advance_seconds": EXPIRE_DELETE_ADVANCE_SECONDS,
+            "pending_jobs": len(get_precise_delete_jobs()),
+            "jobs": get_precise_delete_jobs()
         }
     }
 

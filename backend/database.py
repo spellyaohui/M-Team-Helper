@@ -53,19 +53,3 @@ def get_db():
 def init_db():
     """初始化数据库"""
     Base.metadata.create_all(bind=engine)
-    
-    # 数据库迁移：添加 images 列（如果不存在）
-    with engine.connect() as conn:
-        # 检查 download_history 表是否有 images 列
-        result = conn.execute(text("PRAGMA table_info(download_history)"))
-        columns = [row[1] for row in result.fetchall()]
-        
-        if "images" not in columns:
-            print("[Database] 正在添加 images 列到 download_history 表...")
-            conn.execute(text("ALTER TABLE download_history ADD COLUMN images TEXT"))
-            conn.commit()
-            print("[Database] images 列添加成功")
-        
-        # 分析表以优化查询计划
-        conn.execute(text("PRAGMA optimize"))
-        conn.commit()

@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -41,10 +42,27 @@ class SPAMiddleware(BaseHTTPMiddleware):
         
         return response
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """应用生命周期管理：启动和关闭时的处理"""
+    # 启动时执行
+    app_logger.info("M-Team Helper 服务启动")
+    init_db()
+    start_scheduler()
+    
+    yield  # 应用运行中
+    
+    # 关闭时执行
+    app_logger.info("M-Team Helper 服务关闭")
+    stop_scheduler()
+
+
 app = FastAPI(
     title=settings.APP_NAME,
     description="M-Team PT 助手 API",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 # 添加 SPA 中间件（必须在其他中间件之前添加）
@@ -82,18 +100,6 @@ app.include_router(dashboard.router)
 from routers import logs
 app.include_router(logs.router)
 
-@app.on_event("startup")
-async def startup():
-    """启动时初始化数据库和定时任务"""
-    app_logger.info("M-Team Helper 服务启动")
-    init_db()
-    start_scheduler()
-
-@app.on_event("shutdown")
-async def shutdown():
-    """关闭时停止定时任务"""
-    app_logger.info("M-Team Helper 服务关闭")
-    stop_scheduler()
 
 @app.get("/health")
 async def health():
