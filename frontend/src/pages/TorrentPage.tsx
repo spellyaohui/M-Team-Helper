@@ -35,9 +35,7 @@ interface Downloader {
 const discountOptions = [
   { value: '', label: '全部' },
   { value: 'FREE', label: '免费' },
-  { value: '_2X_FREE', label: '2x免费' },
   { value: 'PERCENT_50', label: '50%' },
-  { value: '_2X', label: '2x上传' },
 ];
 
 const modeOptions = [
