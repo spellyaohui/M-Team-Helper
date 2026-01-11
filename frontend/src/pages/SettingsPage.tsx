@@ -1124,22 +1124,21 @@ const SettingsPage: React.FC = () => {
             </Col>
             
             <Col xs={24} sm={12} md={8}>
-              <div style={{ 
-                padding: '16px', 
-                background: '#f6f8fa', 
-                borderRadius: '6px',
-                border: '1px solid #e1e4e8'
-              }}>
+              <Card 
+                size="small" 
+                style={{ height: '100%' }}
+                styles={{ body: { padding: '12px 16px' } }}
+              >
                 <Text type="secondary" style={{ fontSize: '12px' }}>删除容量范围</Text>
                 <div style={{ marginTop: '4px' }}>
-                  <Text strong style={{ color: '#1890ff' }}>
+                  <Text strong style={{ color: '#1890ff', fontSize: '18px' }}>
                     {(autoDeleteForm.getFieldValue('max_capacity_gb') || 1000) - (autoDeleteForm.getFieldValue('min_capacity_gb') || 800)} GB
                   </Text>
                 </div>
                 <Text type="secondary" style={{ fontSize: '11px' }}>
                   每次最多删除的容量
                 </Text>
-              </div>
+              </Card>
             </Col>
           </Row>
 

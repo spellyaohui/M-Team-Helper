@@ -778,34 +778,31 @@ async def check_dynamic_delete():
             
             # 获取磁盘空间信息
             disk_info = await get_disk_space_info(downloader)
-            if not disk_info or "free_space_gb" not in disk_info:
+            if not disk_info:
                 logger.info(f" 无法获取下载器 {downloader.name} 的磁盘空间信息")
                 return
             
-            free_space_gb = disk_info["free_space_gb"]
-            # 重命名变量以更清晰地表达含义：
-            # trigger_threshold_gb: 当剩余空间低于此值时触发删种
-            # target_free_space_gb: 删种后目标剩余空间
+            free_space_gb = disk_info.get("free_space_gb", 0)
+            used_space_gb = disk_info.get("used_space_gb", 0)  # 种子占用的空间
+            
+            # 配置含义：
+            # max_capacity_gb: 已用空间触发阈值，超过此值时开始删种
+            # min_capacity_gb: 删种后的目标已用空间
             trigger_threshold_gb = auto_delete_config["max_capacity_gb"]
-            target_free_space_gb = auto_delete_config["min_capacity_gb"]
+            target_used_space_gb = auto_delete_config["min_capacity_gb"]
             
-            logger.info(f" 下载器 {downloader.name} 剩余空间: {free_space_gb:.2f} GB")
-            logger.info(f" 触发阈值: {trigger_threshold_gb} GB, 目标剩余空间: {target_free_space_gb} GB")
+            logger.info(f" 下载器 {downloader.name} 磁盘状态: 种子占用 {used_space_gb:.2f} GB, 剩余 {free_space_gb:.2f} GB")
+            logger.info(f" 触发阈值: 已用 > {trigger_threshold_gb} GB, 目标已用: {target_used_space_gb} GB")
             
-            # 检查是否需要删种：当剩余空间 >= 触发阈值时，不需要删种
-            if free_space_gb >= trigger_threshold_gb:
-                logger.info(f" 下载器 {downloader.name} 剩余空间充足（>= {trigger_threshold_gb} GB），跳过")
+            # 检查是否需要删种：当已用空间 <= 触发阈值时，不需要删种
+            if used_space_gb <= trigger_threshold_gb:
+                logger.info(f" 下载器 {downloader.name} 已用空间未超阈值（{used_space_gb:.2f} <= {trigger_threshold_gb} GB），跳过")
                 return
             
-            logger.info(f" 下载器 {downloader.name} 剩余空间不足（< {trigger_threshold_gb} GB），开始删种")
+            logger.info(f" 下载器 {downloader.name} 已用空间超过阈值（{used_space_gb:.2f} > {trigger_threshold_gb} GB），开始删种")
             
-            # 计算需要释放的空间：目标是让剩余空间达到 target_free_space_gb
-            need_to_free_gb = target_free_space_gb - free_space_gb
-            
-            # 安全检查：如果计算出的需要释放空间为负数或零，说明配置有问题
-            if need_to_free_gb <= 0:
-                logger.warning(f" 配置异常：目标剩余空间({target_free_space_gb} GB) <= 当前剩余空间({free_space_gb:.2f} GB)，跳过删种")
-                return
+            # 计算需要释放的空间：目标是让已用空间降到 target_used_space_gb
+            need_to_free_gb = used_space_gb - target_used_space_gb
             
             logger.info(f" 需要释放空间: {need_to_free_gb:.2f} GB")
             

@@ -517,7 +517,7 @@ async def get_disk_space_info(downloader) -> Optional[Dict[str, Any]]:
         downloader: 下载器配置对象
     
     Returns:
-        磁盘空间信息字典，包含剩余空间等信息
+        磁盘空间信息字典，包含 free_space_gb（剩余空间）和 total_space_gb（总容量）
     """
     try:
         if downloader.type == "qbittorrent":
@@ -532,6 +532,17 @@ async def get_disk_space_info(downloader) -> Optional[Dict[str, Any]]:
                     disk_info["free_space_bytes"] = server_state["free_space_on_disk"]
                     free_gb = server_state["free_space_on_disk"] / (1024 ** 3)
                     disk_info["free_space_gb"] = round(free_gb, 2)
+                
+                # 获取所有种子的总大小来估算已用空间
+                torrents = client.torrents_info()
+                total_torrent_size = sum(t.size for t in torrents)
+                used_gb = total_torrent_size / (1024 ** 3)
+                
+                # 总容量 = 剩余空间 + 已用空间（种子占用）
+                # 注意：这是估算值，因为磁盘上可能还有其他文件
+                if "free_space_gb" in disk_info:
+                    disk_info["total_space_gb"] = round(disk_info["free_space_gb"] + used_gb, 2)
+                    disk_info["used_space_gb"] = round(used_gb, 2)
                 
                 if "dl_info_speed" in server_state:
                     disk_info["download_speed"] = server_state["dl_info_speed"]
