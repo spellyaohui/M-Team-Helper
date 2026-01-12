@@ -12,7 +12,6 @@ interface Rule {
   is_enabled: boolean;
   mode: string;
   free_only: boolean;
-  double_upload: boolean;
   min_size: number | null;
   max_size: number | null;
   min_seeders: number | null;
@@ -245,7 +244,6 @@ export default function RulePage() {
         <Space wrap size={[4, 4]}>
           <Tag color={r.mode === 'adult' ? 'magenta' : 'blue'} bordered={false}>{r.mode === 'adult' ? '成人' : '普通'}</Tag>
           {r.free_only && <Tag color="green" bordered={false}>免费</Tag>}
-          {r.double_upload && <Tag color="cyan" bordered={false}>2x上传</Tag>}
           {r.min_size && <Tag bordered={false}>≥{r.min_size}GB</Tag>}
           {r.max_size && <Tag bordered={false}>≤{r.max_size}GB</Tag>}
           {r.keywords && <Tag bordered={false} icon={<FilterOutlined />}>{r.keywords}</Tag>}
@@ -356,11 +354,6 @@ export default function RulePage() {
              </Col>
              <Col span={6}>
                 <Form.Item name="free_only" label="仅免费" valuePropName="checked">
-                   <Switch />
-                </Form.Item>
-             </Col>
-             <Col span={6}>
-                <Form.Item name="double_upload" label="2x上传" valuePropName="checked">
                    <Switch />
                 </Form.Item>
              </Col>
