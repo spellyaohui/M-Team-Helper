@@ -670,9 +670,43 @@ async def delete_torrents_by_free_space(
             print(f"[DynamicDelete] 没有可删除的种子")
             return []
         
-        # 计算所有种子的总大小
-        total_size_gb = sum(t["size"] for t in torrents) / (1024 ** 3)
-        print(f"[DynamicDelete] 可删除种子总数: {len(torrents)}，总大小: {total_size_gb:.2f} GB")
+        # 定义下载中的状态（qBittorrent 和 Transmission）
+        downloading_states = [
+            # qBittorrent 下载中状态
+            "downloading", "queuedDL", "stalledDL", "metaDL", 
+            "pausedDL", "forcedDL", "allocating", "checkingDL",
+            # Transmission 下载中状态
+            "downloading", "download pending", "stopped"
+        ]
+        
+        # 过滤掉下载中的种子（进度小于100%或状态为下载中）
+        # 只删除已完成做种的种子，保护下载中的种子
+        completed_torrents = []
+        skipped_downloading = 0
+        
+        for t in torrents:
+            progress = t.get("progress", 0)
+            state = str(t.get("state", "")).lower()
+            
+            # 判断是否为下载中的种子
+            is_downloading = progress < 100 or state in downloading_states
+            
+            if is_downloading:
+                skipped_downloading += 1
+                print(f"[DynamicDelete] 跳过下载中的种子: {t['name']} (进度: {progress:.1f}%, 状态: {state})")
+            else:
+                completed_torrents.append(t)
+        
+        if skipped_downloading > 0:
+            print(f"[DynamicDelete] 已跳过 {skipped_downloading} 个下载中的种子")
+        
+        if not completed_torrents:
+            print(f"[DynamicDelete] 没有已完成的种子可删除（所有种子都在下载中）")
+            return []
+        
+        # 计算可删除种子的总大小
+        total_size_gb = sum(t["size"] for t in completed_torrents) / (1024 ** 3)
+        print(f"[DynamicDelete] 可删除种子总数: {len(completed_torrents)}，总大小: {total_size_gb:.2f} GB")
         
         # 安全检查：如果需要释放的空间大于所有种子总大小，说明配置可能有问题
         if need_to_free_gb > total_size_gb:
@@ -681,13 +715,13 @@ async def delete_torrents_by_free_space(
         
         # 根据策略排序种子
         if strategy == "oldest_first":
-            sorted_torrents = sorted(torrents, key=lambda x: x["added_on"])
+            sorted_torrents = sorted(completed_torrents, key=lambda x: x["added_on"])
         elif strategy == "largest_first":
-            sorted_torrents = sorted(torrents, key=lambda x: x["size"], reverse=True)
+            sorted_torrents = sorted(completed_torrents, key=lambda x: x["size"], reverse=True)
         elif strategy == "lowest_ratio":
-            sorted_torrents = sorted(torrents, key=lambda x: x["ratio"])
+            sorted_torrents = sorted(completed_torrents, key=lambda x: x["ratio"])
         else:
-            sorted_torrents = torrents
+            sorted_torrents = completed_torrents
         
         deleted_hashes = []
         freed_space_gb = 0.0
@@ -734,7 +768,29 @@ async def delete_torrents_by_strategy(
         已删除的种子哈希列表
     """
     try:
-        current_size_gb = sum(t["size"] for t in torrents) / (1024 ** 3)
+        # 定义下载中的状态（qBittorrent 和 Transmission）
+        downloading_states = [
+            # qBittorrent 下载中状态
+            "downloading", "queuedDL", "stalledDL", "metaDL", 
+            "pausedDL", "forcedDL", "allocating", "checkingDL",
+            # Transmission 下载中状态
+            "downloading", "download pending", "stopped"
+        ]
+        
+        # 过滤掉下载中的种子，只删除已完成做种的种子
+        completed_torrents = []
+        for t in torrents:
+            progress = t.get("progress", 0)
+            state = str(t.get("state", "")).lower()
+            is_downloading = progress < 100 or state in downloading_states
+            if not is_downloading:
+                completed_torrents.append(t)
+        
+        if not completed_torrents:
+            print(f"[DynamicDelete] 没有已完成的种子可删除")
+            return []
+        
+        current_size_gb = sum(t["size"] for t in completed_torrents) / (1024 ** 3)
         if current_size_gb <= target_size_gb:
             return []
         
@@ -742,13 +798,13 @@ async def delete_torrents_by_strategy(
         
         # 根据策略排序种子
         if strategy == "oldest_first":
-            sorted_torrents = sorted(torrents, key=lambda x: x["added_on"])
+            sorted_torrents = sorted(completed_torrents, key=lambda x: x["added_on"])
         elif strategy == "largest_first":
-            sorted_torrents = sorted(torrents, key=lambda x: x["size"], reverse=True)
+            sorted_torrents = sorted(completed_torrents, key=lambda x: x["size"], reverse=True)
         elif strategy == "lowest_ratio":
-            sorted_torrents = sorted(torrents, key=lambda x: x["ratio"])
+            sorted_torrents = sorted(completed_torrents, key=lambda x: x["ratio"])
         else:
-            sorted_torrents = torrents
+            sorted_torrents = completed_torrents
         
         deleted_hashes = []
         deleted_size_gb = 0.0
