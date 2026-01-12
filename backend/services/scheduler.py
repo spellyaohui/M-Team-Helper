@@ -39,9 +39,34 @@ def schedule_precise_delete(history_id: int, torrent_name: str, discount_end_tim
     delete_time = discount_end_time - timedelta(seconds=EXPIRE_DELETE_ADVANCE_SECONDS)
     now = beijing_now()
     
-    # 如果删除时间已经过了，跳过调度（让定时检查任务处理）
+    # 如果删除时间已经过了
     if delete_time <= now:
-        logger.info(f"种子 {torrent_name} 的删除时间已过，跳过精准调度")
+        # 检查促销是否还没到期，如果还没到期则立即调度删除（10秒后执行）
+        if discount_end_time > now:
+            logger.info(f"种子 {torrent_name} 距离促销到期不足5分钟，将在10秒后立即删除")
+            # 使用 history_id 作为 job_id
+            job_id = f"precise_delete_{history_id}"
+            
+            # 检查是否已存在相同任务
+            existing_job = scheduler.get_job(job_id)
+            if existing_job:
+                logger.debug(f"种子 {torrent_name} 的精准删种任务已存在，跳过")
+                return
+            
+            # 10秒后执行删除
+            immediate_delete_time = now + timedelta(seconds=10)
+            scheduler.add_job(
+                execute_precise_delete,
+                trigger=DateTrigger(run_date=immediate_delete_time),
+                id=job_id,
+                args=[history_id, torrent_name, info_hash],
+                replace_existing=True,
+                misfire_grace_time=60
+            )
+            logger.info(f"已调度立即删种: {torrent_name}, 将在 {immediate_delete_time.strftime('%Y-%m-%d %H:%M:%S')} 执行")
+        else:
+            # 促销已经过期，让定时检查任务处理
+            logger.info(f"种子 {torrent_name} 的促销已过期，跳过精准调度（由定时任务处理）")
         return
     
     # 使用 history_id 作为 job_id，确保唯一性和可追踪
@@ -450,6 +475,27 @@ async def auto_download_torrents():
                     if not match_torrent(torrent, rule):
                         skip_rule_mismatch += 1
                         continue
+                    
+                    # 检查促销到期时间，如果不足10分钟则跳过（避免下载后来不及删除）
+                    if torrent.get("discount_end_time"):
+                        try:
+                            ts = torrent["discount_end_time"]
+                            if isinstance(ts, (int, float)):
+                                expire_time = datetime.fromtimestamp(ts / 1000 if ts > 1e10 else ts)
+                            elif isinstance(ts, str):
+                                expire_time = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                            else:
+                                expire_time = None
+                            
+                            if expire_time:
+                                now = beijing_now()
+                                # 如果促销到期时间不足10分钟，跳过
+                                remaining_seconds = (expire_time - now).total_seconds()
+                                if remaining_seconds < 600:  # 10分钟 = 600秒
+                                    logger.info(f"跳过种子 {torrent['name']}: 促销仅剩 {remaining_seconds:.0f} 秒到期，不足10分钟")
+                                    continue
+                        except Exception as e:
+                            logger.debug(f"检查促销到期时间失败: {e}")
                     
                     # 检查下载队列限制（在推送前检查，确保不会超过限制）
                     if rule.downloader_id and rule.max_downloading:
