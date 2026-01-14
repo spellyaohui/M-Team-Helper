@@ -51,5 +51,31 @@ def get_db():
         db.close()
 
 def init_db():
-    """初始化数据库"""
+    """初始化数据库并执行迁移"""
     Base.metadata.create_all(bind=engine)
+    
+    # 执行数据库迁移
+    run_migrations()
+
+
+def run_migrations():
+    """执行数据库迁移，添加缺失的列"""
+    migrations = [
+        # (表名, 列名, 列定义)
+        ("filter_rules", "max_publish_hours", "INTEGER"),
+    ]
+    
+    with engine.connect() as conn:
+        for table_name, column_name, column_type in migrations:
+            # 检查列是否存在
+            result = conn.execute(text(f"PRAGMA table_info({table_name})"))
+            columns = [row[1] for row in result.fetchall()]
+            
+            if column_name not in columns:
+                # 添加缺失的列
+                try:
+                    conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}"))
+                    conn.commit()
+                    print(f"[Migration] 已添加列: {table_name}.{column_name}")
+                except Exception as e:
+                    print(f"[Migration] 添加列失败 {table_name}.{column_name}: {e}")
