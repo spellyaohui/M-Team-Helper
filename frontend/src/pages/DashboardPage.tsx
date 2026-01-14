@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Row, Col, Card, Table, Tag, List, Avatar, Spin, message, theme, Tooltip, Progress } from 'antd';
+import { Row, Col, Card, Table, Tag, Avatar, Spin, message, theme, Tooltip, Progress } from 'antd';
 import { 
   UserOutlined, 
   CloudDownloadOutlined, 
@@ -101,7 +101,7 @@ const StatCard = ({ title, value, suffix, icon, color, loading }: any) => {
   const { token } = useToken();
   
   return (
-    <Card className="modern-card" bordered={false} bodyStyle={{ padding: '20px 24px' }}>
+    <Card className="modern-card" variant="borderless" styles={{ body: { padding: '20px 24px' } }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
           <div style={{ color: token.colorTextSecondary, fontSize: 14, marginBottom: 4 }}>{title}</div>
@@ -379,7 +379,7 @@ export default function DashboardPage() {
           <Card 
             title="下载趋势 (近7天)" 
             className="modern-card" 
-            bordered={false}
+            variant="borderless"
             style={{ marginBottom: 24 }}
           >
             <div style={{ height: 300 }}>
@@ -391,7 +391,7 @@ export default function DashboardPage() {
           <Card 
             title="账号状态" 
             className="modern-card" 
-            bordered={false}
+            variant="borderless"
           >
             <Table
               columns={accountColumns}
@@ -414,16 +414,16 @@ export default function DashboardPage() {
               </div>
             }
             className="modern-card" 
-            bordered={false}
+            variant="borderless"
             style={{ marginBottom: 24 }}
-            bodyStyle={{ padding: '12px 12px' }}
+            styles={{ body: { padding: '12px 12px' } }}
           >
             <div style={{ maxHeight: 600, overflowY: 'auto' }}>
               {data.downloader_stats.map(downloader => (
                 <Card 
                   key={downloader.id} 
                   size="small"
-                  bordered={false}
+                  variant="borderless"
                   style={{ 
                     marginBottom: 12,
                     background: token.colorBgLayout,
@@ -495,34 +495,30 @@ export default function DashboardPage() {
           <Card 
             title="最近活动" 
             className="modern-card" 
-            bordered={false}
-            bodyStyle={{ padding: '0 24px' }}
+            variant="borderless"
+            styles={{ body: { padding: '0 24px' } }}
           >
-            <List
-              itemLayout="horizontal"
-              dataSource={data.recent_activities.slice(0, 5)}
-              renderItem={activity => (
-                <List.Item style={{ padding: '16px 0' }}>
-                  <List.Item.Meta
-                    avatar={
-                      <div style={{ 
-                        width: 36, 
-                        height: 36, 
-                        borderRadius: '50%', 
-                        background: activity.status === 'completed' ? '#f6ffed' : '#e6f7ff',
-                        border: `1px solid ${activity.status === 'completed' ? '#b7eb8f' : '#91caff'}`,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        color: activity.status === 'completed' ? '#52c41a' : '#1890ff'
-                      }}>
-                        {activity.status === 'completed' ? <CheckCircleOutlined /> : <CloudDownloadOutlined />}
-                      </div>
-                    }
-                    title={
+            <div>
+              {data.recent_activities.slice(0, 5).map(activity => (
+                <div key={activity.id} style={{ padding: '16px 0', borderBottom: `1px solid ${token.colorBorderSecondary}` }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                    <div style={{ 
+                      width: 36, 
+                      height: 36, 
+                      borderRadius: '50%', 
+                      background: activity.status === 'completed' ? '#f6ffed' : '#e6f7ff',
+                      border: `1px solid ${activity.status === 'completed' ? '#b7eb8f' : '#91caff'}`,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: activity.status === 'completed' ? '#52c41a' : '#1890ff',
+                      flexShrink: 0
+                    }}>
+                      {activity.status === 'completed' ? <CheckCircleOutlined /> : <CloudDownloadOutlined />}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
                       <Tooltip title={activity.torrent_name}>
                         <div style={{ 
-                          width: '100%', 
                           overflow: 'hidden', 
                           textOverflow: 'ellipsis', 
                           whiteSpace: 'nowrap',
@@ -531,17 +527,15 @@ export default function DashboardPage() {
                           {activity.torrent_name}
                         </div>
                       </Tooltip>
-                    }
-                    description={
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginTop: 4 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginTop: 4, color: token.colorTextSecondary }}>
                         <span>{activity.account_username}</span>
                         <span>{dayjs(activity.created_at).format('MM-DD HH:mm')}</span>
                       </div>
-                    }
-                  />
-                </List.Item>
-              )}
-            />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           </Card>
         </Col>
       </Row>

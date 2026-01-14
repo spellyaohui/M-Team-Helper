@@ -322,7 +322,7 @@ export default function TorrentPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-      <Card bordered={false} className="modern-card">
+      <Card variant="borderless" className="modern-card">
         <Form 
           form={form} 
           layout="vertical" 
@@ -375,9 +375,9 @@ export default function TorrentPage() {
       </Card>
 
       <Card 
-        bordered={false} 
+        variant="borderless"
         className="modern-card" 
-        bodyStyle={{ padding: 0 }}
+        styles={{ body: { padding: 0 } }}
         title={
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <CloudDownloadOutlined style={{ color: token.colorPrimary }} />

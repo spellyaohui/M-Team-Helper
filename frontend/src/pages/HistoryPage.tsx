@@ -494,7 +494,7 @@ export default function HistoryPage() {
       
       <Table
         virtual
-        scroll={{ y: 600, x: 'max-content' }}
+        scroll={{ y: 600, x: 1200 }}
         columns={columns}
         dataSource={history}
         rowKey="id"

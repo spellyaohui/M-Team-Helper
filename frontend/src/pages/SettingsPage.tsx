@@ -278,14 +278,14 @@ const ScheduleControlForm: React.FC = () => {
           <Table
             columns={columns}
             dataSource={scheduleSettings.time_ranges}
-            rowKey={(record, index) => `${record.start}-${record.end}-${index}`}
+            rowKey={(record) => `${record.start}-${record.end}`}
             pagination={false}
             size="small"
           />
 
           {scheduleSettings.time_ranges.length === 0 && (
             <Alert
-              message="未配置时间段"
+              title="未配置时间段"
               description="请添加时间段来控制任务的运行时间。如果不配置时间段，所有任务将正常运行。"
               type="warning"
               showIcon
@@ -537,7 +537,7 @@ const SettingsPage: React.FC = () => {
         style={{ marginBottom: 24 }}
       >
         <Alert
-          message="功能说明"
+          title="功能说明"
           description="可以设置不同时间段内允许或禁用特定任务。例如：夜间关闭自动下载但保持过期检查，白天全部开启等。"
           type="info"
           showIcon
@@ -558,7 +558,7 @@ const SettingsPage: React.FC = () => {
         style={{ marginBottom: 24 }}
       >
         <Alert
-          message="设置说明"
+          title="设置说明"
           description="调整系统各项任务的执行频率。设置过短可能导致网站访问频率过高，设置过长可能影响及时性。"
           type="info"
           showIcon
@@ -755,9 +755,9 @@ const SettingsPage: React.FC = () => {
                 <Statistic
                   title="运行状态"
                   value={schedulerStatus.running ? '运行中' : '已停止'}
-                  valueStyle={{ 
+                  styles={{ content: { 
                     color: schedulerStatus.running ? '#3f8600' : '#cf1322' 
-                  }}
+                  }}}
                   prefix={schedulerStatus.running ? <CheckCircleOutlined /> : <ExclamationCircleOutlined />}
                 />
               </Col>
@@ -787,7 +787,7 @@ const SettingsPage: React.FC = () => {
               <>
                 <Divider>时间段控制状态</Divider>
                 <Alert
-                  message={`当前时间: ${schedulerStatus.schedule_control.current_status.current_time}`}
+                  title={`当前时间: ${schedulerStatus.schedule_control.current_status.current_time}`}
                   description={schedulerStatus.schedule_control.current_status.current_time_range.description}
                   type={schedulerStatus.schedule_control.current_status.current_time_range.in_range ? "info" : "warning"}
                   showIcon
@@ -800,9 +800,9 @@ const SettingsPage: React.FC = () => {
                       <Statistic
                         title="自动下载"
                         value={schedulerStatus.schedule_control.current_status.auto_download ? '允许' : '禁用'}
-                        valueStyle={{ 
+                        styles={{ content: { 
                           color: schedulerStatus.schedule_control.current_status.auto_download ? '#3f8600' : '#cf1322' 
-                        }}
+                        }}}
                         prefix={schedulerStatus.schedule_control.current_status.auto_download ? 
                           <CheckCircleOutlined /> : <ExclamationCircleOutlined />}
                       />
@@ -813,9 +813,9 @@ const SettingsPage: React.FC = () => {
                       <Statistic
                         title="过期检查"
                         value={schedulerStatus.schedule_control.current_status.expired_check ? '允许' : '禁用'}
-                        valueStyle={{ 
+                        styles={{ content: { 
                           color: schedulerStatus.schedule_control.current_status.expired_check ? '#3f8600' : '#cf1322' 
-                        }}
+                        }}}
                         prefix={schedulerStatus.schedule_control.current_status.expired_check ? 
                           <CheckCircleOutlined /> : <ExclamationCircleOutlined />}
                       />
@@ -826,9 +826,9 @@ const SettingsPage: React.FC = () => {
                       <Statistic
                         title="账号刷新"
                         value={schedulerStatus.schedule_control.current_status.account_refresh ? '允许' : '禁用'}
-                        valueStyle={{ 
+                        styles={{ content: { 
                           color: schedulerStatus.schedule_control.current_status.account_refresh ? '#3f8600' : '#cf1322' 
-                        }}
+                        }}}
                         prefix={schedulerStatus.schedule_control.current_status.account_refresh ? 
                           <CheckCircleOutlined /> : <ExclamationCircleOutlined />}
                       />
@@ -877,7 +877,7 @@ const SettingsPage: React.FC = () => {
         }
       >
         <Alert
-          message="重要提示"
+          title="重要提示"
           description="自动删种功能会在促销过期后自动删除未完成的种子，避免影响分享率。请谨慎配置。"
           type="warning"
           showIcon
@@ -903,7 +903,7 @@ const SettingsPage: React.FC = () => {
           {/* 基础设置 */}
           <Title level={4} style={{ marginBottom: 16 }}>基础设置</Title>
           <Alert
-            message="基础设置说明"
+            title="基础设置说明"
             description="以下设置将应用于所有下载器的自动删种功能"
             type="info"
             showIcon
@@ -983,7 +983,7 @@ const SettingsPage: React.FC = () => {
           </Divider>
           
           <Alert
-            message="动态删种说明"
+            title="动态删种说明"
             description={
               <div>
                 <p>动态删种功能需要指定具体的下载器，当该下载器中种子总大小超过最大容量阈值时，系统会自动删除种子直到达到最小容量阈值。</p>
@@ -1131,9 +1131,13 @@ const SettingsPage: React.FC = () => {
               >
                 <Text type="secondary" style={{ fontSize: '12px' }}>删除容量范围</Text>
                 <div style={{ marginTop: '4px' }}>
-                  <Text strong style={{ color: '#1890ff', fontSize: '18px' }}>
-                    {(autoDeleteForm.getFieldValue('max_capacity_gb') || 1000) - (autoDeleteForm.getFieldValue('min_capacity_gb') || 800)} GB
-                  </Text>
+                  <Form.Item noStyle shouldUpdate>
+                    {({ getFieldValue }) => (
+                      <Text strong style={{ color: '#1890ff', fontSize: '18px' }}>
+                        {(getFieldValue('max_capacity_gb') || 1000) - (getFieldValue('min_capacity_gb') || 800)} GB
+                      </Text>
+                    )}
+                  </Form.Item>
                 </div>
                 <Text type="secondary" style={{ fontSize: '11px' }}>
                   每次最多删除的容量

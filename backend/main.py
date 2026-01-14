@@ -65,13 +65,7 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# 添加 SPA 中间件（必须在其他中间件之前添加）
-app.add_middleware(SPAMiddleware)
-
-# 添加 Gzip 压缩中间件（提升 API 响应性能）
-app.add_middleware(GZipMiddleware, minimum_size=1000)
-
-# CORS 配置（开发时可能仍需要）
+# CORS 配置（必须在最外层，最先添加）
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -79,6 +73,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 添加 Gzip 压缩中间件（提升 API 响应性能）
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+# 添加 SPA 中间件
+app.add_middleware(SPAMiddleware)
 
 # 注册 API 路由（不带 /api 前缀，前端已配置 baseURL）
 app.include_router(auth_router)

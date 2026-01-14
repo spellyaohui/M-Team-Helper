@@ -243,16 +243,16 @@ export default function RulePage() {
       key: 'conditions',
       render: (_: any, r: Rule) => (
         <Space wrap size={[4, 4]}>
-          <Tag color={r.mode === 'adult' ? 'magenta' : 'blue'} bordered={false}>{r.mode === 'adult' ? '成人' : '普通'}</Tag>
-          {r.free_only && <Tag color="green" bordered={false}>免费</Tag>}
-          {r.min_size && <Tag bordered={false}>≥{r.min_size}GB</Tag>}
-          {r.max_size && <Tag bordered={false}>≤{r.max_size}GB</Tag>}
-          {r.max_publish_hours && <Tag color="cyan" bordered={false}>≤{r.max_publish_hours}h</Tag>}
-          {r.keywords && <Tag bordered={false} icon={<FilterOutlined />}>{r.keywords}</Tag>}
+          <Tag color={r.mode === 'adult' ? 'magenta' : 'blue'} variant="filled">{r.mode === 'adult' ? '成人' : '普通'}</Tag>
+          {r.free_only && <Tag color="green" variant="filled">免费</Tag>}
+          {r.min_size && <Tag variant="filled">≥{r.min_size}GB</Tag>}
+          {r.max_size && <Tag variant="filled">≤{r.max_size}GB</Tag>}
+          {r.max_publish_hours && <Tag color="cyan" variant="filled">≤{r.max_publish_hours}h</Tag>}
+          {r.keywords && <Tag variant="filled" icon={<FilterOutlined />}>{r.keywords}</Tag>}
           {r.categories && r.categories.length > 0 && (
-            <Tag color="orange" bordered={false}>分类: {r.categories.length}个</Tag>
+            <Tag color="orange" variant="filled">分类: {r.categories.length}个</Tag>
           )}
-          {r.tags && r.tags.length > 0 && <Tag color="purple" bordered={false}>标签: {r.tags.join(', ')}</Tag>}
+          {r.tags && r.tags.length > 0 && <Tag color="purple" variant="filled">标签: {r.tags.join(', ')}</Tag>}
         </Space>
       )
     },
@@ -287,7 +287,7 @@ export default function RulePage() {
   return (
     <>
       <Card 
-         bordered={false} 
+         variant="borderless"
          className="modern-card" 
          title={
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -305,7 +305,7 @@ export default function RulePage() {
                 添加规则
               </Button>
          }
-         bodyStyle={{ padding: 0 }}
+         styles={{ body: { padding: 0 } }}
       >
         <Table 
            columns={columns} 
@@ -390,14 +390,17 @@ export default function RulePage() {
                    <Input placeholder="如：4K,HDR,REMUX" />
                 </Form.Item>
              </Col>
-             <Col span={6}>
+             <Col span={12}>
                 <Form.Item name="exclude_keywords" label="排除关键词" tooltip="同时匹配主标题和副标题">
                    <Input placeholder="如：CAM,TS" />
                 </Form.Item>
              </Col>
+          </Row>
+          
+          <Row gutter={16}>
              <Col span={6}>
-                <Form.Item name="max_publish_hours" label="发布时间" tooltip="只下载N小时内发布的种子">
-                   <InputNumber min={1} style={{ width: '100%' }} placeholder="不限制" addonAfter="小时内" />
+                <Form.Item name="max_publish_hours" label="发布时间限制" tooltip="只下载N小时内发布的种子">
+                   <InputNumber min={1} style={{ width: '100%' }} placeholder="不限" suffix="小时内" />
                 </Form.Item>
              </Col>
           </Row>
