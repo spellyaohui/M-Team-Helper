@@ -19,6 +19,7 @@ interface Rule {
   categories: string[] | null;
   keywords: string | null;
   exclude_keywords: string | null;
+  max_publish_hours: number | null;
   downloader_id: number | null;
   save_path: string | null;
   tags: string[] | null;
@@ -246,6 +247,7 @@ export default function RulePage() {
           {r.free_only && <Tag color="green" bordered={false}>免费</Tag>}
           {r.min_size && <Tag bordered={false}>≥{r.min_size}GB</Tag>}
           {r.max_size && <Tag bordered={false}>≤{r.max_size}GB</Tag>}
+          {r.max_publish_hours && <Tag color="cyan" bordered={false}>≤{r.max_publish_hours}h</Tag>}
           {r.keywords && <Tag bordered={false} icon={<FilterOutlined />}>{r.keywords}</Tag>}
           {r.categories && r.categories.length > 0 && (
             <Tag color="orange" bordered={false}>分类: {r.categories.length}个</Tag>
@@ -388,9 +390,14 @@ export default function RulePage() {
                    <Input placeholder="如：4K,HDR,REMUX" />
                 </Form.Item>
              </Col>
-             <Col span={12}>
+             <Col span={6}>
                 <Form.Item name="exclude_keywords" label="排除关键词" tooltip="同时匹配主标题和副标题">
                    <Input placeholder="如：CAM,TS" />
+                </Form.Item>
+             </Col>
+             <Col span={6}>
+                <Form.Item name="max_publish_hours" label="发布时间" tooltip="只下载N小时内发布的种子">
+                   <InputNumber min={1} style={{ width: '100%' }} placeholder="不限制" addonAfter="小时内" />
                 </Form.Item>
              </Col>
           </Row>

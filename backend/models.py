@@ -58,6 +58,7 @@ class FilterRule(Base):
     categories = Column(JSON, nullable=True)  # 分类列表
     keywords = Column(String(500), nullable=True)  # 关键词（逗号分隔）
     exclude_keywords = Column(String(500), nullable=True)  # 排除关键词
+    max_publish_hours = Column(Integer, nullable=True)  # 最大发布时间（小时），只下载N小时内发布的种子
     
     # 下载器配置
     downloader_id = Column(Integer, ForeignKey("downloaders.id"), nullable=True)

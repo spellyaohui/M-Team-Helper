@@ -23,6 +23,7 @@ class RuleCreate(BaseModel):
     categories: Optional[List[str]] = None
     keywords: Optional[str] = None
     exclude_keywords: Optional[str] = None
+    max_publish_hours: Optional[int] = None  # 最大发布时间（小时）
     downloader_id: Optional[int] = None
     save_path: Optional[str] = None
     tags: Optional[List[str]] = None  # 下载时添加的标签
@@ -43,6 +44,7 @@ class RuleResponse(BaseModel):
     categories: Optional[List[str]]
     keywords: Optional[str]
     exclude_keywords: Optional[str]
+    max_publish_hours: Optional[int]
     downloader_id: Optional[int]
     save_path: Optional[str]
     tags: Optional[List[str]]
@@ -91,6 +93,7 @@ async def create_rule(rule: RuleCreate, db: Session = Depends(get_db)):
         categories=rule.categories,
         keywords=rule.keywords,
         exclude_keywords=rule.exclude_keywords,
+        max_publish_hours=rule.max_publish_hours,
         downloader_id=rule.downloader_id,
         save_path=rule.save_path,
         tags=rule.tags,
@@ -154,6 +157,9 @@ def match_torrent(torrent: dict, rule: FilterRule, debug: bool = False) -> bool:
         rule: 筛选规则
         debug: 是否输出调试信息
     """
+    from datetime import datetime, timezone, timedelta
+    from models import beijing_now
+    
     # 免费检查
     if rule.free_only and not torrent.get("is_free"):
         if debug:
@@ -187,6 +193,36 @@ def match_torrent(torrent: dict, rule: FilterRule, debug: bool = False) -> bool:
         if debug:
             print(f"  不匹配: 做种数太多 ({seeders} > {rule.max_seeders})")
         return False
+    
+    # 发布时间检查
+    if rule.max_publish_hours:
+        created_date = torrent.get("created_date")
+        if created_date:
+            try:
+                # 解析发布时间
+                if isinstance(created_date, str):
+                    # ISO 格式字符串
+                    publish_time = datetime.fromisoformat(created_date.replace("Z", "+00:00"))
+                    # 转换为北京时间（无时区）
+                    if publish_time.tzinfo:
+                        publish_time = publish_time.astimezone(timezone(timedelta(hours=8))).replace(tzinfo=None)
+                elif isinstance(created_date, (int, float)):
+                    # 时间戳（毫秒或秒）
+                    ts = created_date / 1000 if created_date > 1e10 else created_date
+                    publish_time = datetime.fromtimestamp(ts)
+                else:
+                    publish_time = None
+                
+                if publish_time:
+                    now = beijing_now()
+                    hours_ago = (now - publish_time).total_seconds() / 3600
+                    if hours_ago > rule.max_publish_hours:
+                        if debug:
+                            print(f"  不匹配: 发布时间超过限制 ({hours_ago:.1f}h > {rule.max_publish_hours}h)")
+                        return False
+            except Exception as e:
+                if debug:
+                    print(f"  警告: 解析发布时间失败: {e}")
     
     # 分类检查（处理 'null' 字符串和空列表的情况）
     if rule.categories and rule.categories != 'null' and rule.categories != ['null']:
