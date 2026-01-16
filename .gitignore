@@ -21,8 +21,9 @@ backend/data/mteam.db-shm
 backend/data/mteam.db-wal
 backend/data/torrents/
 
-# 清空数据脚本（不上传到仓库）
+# 测试脚本（包含敏感信息，不上传到仓库）
 backend/clear_data.py
+backend/check_all_trackers.py
 
 # Node.js
 node_modules/
