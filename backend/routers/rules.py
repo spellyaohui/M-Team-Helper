@@ -14,6 +14,7 @@ class RuleCreate(BaseModel):
     name: str
     is_enabled: bool = True
     mode: str = "normal"  # normal 或 adult
+    rule_type: str = "normal"  # normal=普通规则, favorite=收藏监控规则
     free_only: bool = False
     double_upload: bool = False
     min_size: Optional[float] = None  # GB
@@ -24,6 +25,8 @@ class RuleCreate(BaseModel):
     keywords: Optional[str] = None
     exclude_keywords: Optional[str] = None
     max_publish_hours: Optional[int] = None  # 最大发布时间（小时）
+    monitor_favorites: bool = False  # 是否监控收藏
+    auto_unfavorite_after_seeding: bool = True  # 做种后自动取消收藏
     downloader_id: Optional[int] = None
     save_path: Optional[str] = None
     tags: Optional[List[str]] = None  # 下载时添加的标签
@@ -35,6 +38,7 @@ class RuleResponse(BaseModel):
     name: str
     is_enabled: bool
     mode: str
+    rule_type: str
     free_only: bool
     double_upload: bool
     min_size: Optional[float]
@@ -45,12 +49,14 @@ class RuleResponse(BaseModel):
     keywords: Optional[str]
     exclude_keywords: Optional[str]
     max_publish_hours: Optional[int]
+    monitor_favorites: bool
+    auto_unfavorite_after_seeding: bool
     downloader_id: Optional[int]
     save_path: Optional[str]
     tags: Optional[List[str]]
     max_downloading: Optional[int]
     created_at: datetime
-    
+
     class Config:
         from_attributes = True
 
@@ -84,6 +90,7 @@ async def create_rule(rule: RuleCreate, db: Session = Depends(get_db)):
         name=rule.name,
         is_enabled=rule.is_enabled,
         mode=rule.mode,
+        rule_type=rule.rule_type,
         free_only=rule.free_only,
         double_upload=rule.double_upload,
         min_size=rule.min_size,
@@ -94,6 +101,8 @@ async def create_rule(rule: RuleCreate, db: Session = Depends(get_db)):
         keywords=rule.keywords,
         exclude_keywords=rule.exclude_keywords,
         max_publish_hours=rule.max_publish_hours,
+        monitor_favorites=rule.monitor_favorites,
+        auto_unfavorite_after_seeding=rule.auto_unfavorite_after_seeding,
         downloader_id=rule.downloader_id,
         save_path=rule.save_path,
         tags=rule.tags,

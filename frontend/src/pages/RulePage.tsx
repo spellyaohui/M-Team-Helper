@@ -11,6 +11,7 @@ interface Rule {
   name: string;
   is_enabled: boolean;
   mode: string;
+  rule_type: string;  // normal 或 favorite
   free_only: boolean;
   min_size: number | null;
   max_size: number | null;
@@ -20,6 +21,8 @@ interface Rule {
   keywords: string | null;
   exclude_keywords: string | null;
   max_publish_hours: number | null;
+  monitor_favorites: boolean;  // 是否监控收藏
+  auto_unfavorite_after_seeding: boolean;  // 做种后自动取消收藏
   downloader_id: number | null;
   save_path: string | null;
   tags: string[] | null;
@@ -29,6 +32,11 @@ interface Rule {
 const modeOptions = [
   { value: 'normal', label: '普通' },
   { value: 'adult', label: '成人' },
+];
+
+const ruleTypeOptions = [
+  { value: 'normal', label: '普通规则' },
+  { value: 'favorite', label: '收藏监控' },
 ];
 
 export default function RulePage() {
@@ -51,6 +59,8 @@ export default function RulePage() {
   // 监听账号和模式变化，获取对应的分类列表
   const selectedAccountId = Form.useWatch('account_id', form);
   const selectedMode = Form.useWatch('mode', form);
+  // 监听规则类型变化
+  const selectedRuleType = Form.useWatch('rule_type', form);
 
   useEffect(() => {
     if (selectedDownloaderId) {
@@ -238,11 +248,12 @@ export default function RulePage() {
         <Switch checked={v} onChange={() => handleToggle(r.id)} size="small" />
       )
     },
-    { 
-      title: '条件', 
+    {
+      title: '条件',
       key: 'conditions',
       render: (_: any, r: Rule) => (
         <Space wrap size={[4, 4]}>
+          {r.rule_type === 'favorite' && <Tag color="gold" variant="filled">收藏监控</Tag>}
           <Tag color={r.mode === 'adult' ? 'magenta' : 'blue'} variant="filled">{r.mode === 'adult' ? '成人' : '普通'}</Tag>
           {r.free_only && <Tag color="green" variant="filled">免费</Tag>}
           {r.min_size && <Tag variant="filled">≥{r.min_size}GB</Tag>}
@@ -253,6 +264,7 @@ export default function RulePage() {
             <Tag color="orange" variant="filled">分类: {r.categories.length}个</Tag>
           )}
           {r.tags && r.tags.length > 0 && <Tag color="purple" variant="filled">标签: {r.tags.join(', ')}</Tag>}
+          {r.rule_type === 'favorite' && r.auto_unfavorite_after_seeding && <Tag color="volcano" variant="filled">自动取消收藏</Tag>}
         </Space>
       )
     },
@@ -344,22 +356,54 @@ export default function RulePage() {
           </Row>
           
           <Row gutter={16}>
-             <Col span={6}>
+             <Col span={8}>
+                <Form.Item name="rule_type" label="规则类型" initialValue="normal">
+                   <Select options={ruleTypeOptions} />
+                </Form.Item>
+             </Col>
+             <Col span={8}>
                 <Form.Item name="mode" label="模式" initialValue="normal">
                    <Select options={modeOptions} />
                 </Form.Item>
              </Col>
-             <Col span={6}>
+             <Col span={8}>
                 <Form.Item name="is_enabled" label="启用" valuePropName="checked" initialValue={true}>
                    <Switch />
                 </Form.Item>
              </Col>
-             <Col span={6}>
+          </Row>
+
+          {/* 收藏监控专用配置 */}
+          {selectedRuleType === 'favorite' && (
+            <Row gutter={16}>
+              <Col span={8}>
+                <Form.Item name="monitor_favorites" label="监控收藏" valuePropName="checked" initialValue={true} tooltip="自动检查收藏列表中的种子">
+                  <Switch />
+                </Form.Item>
+              </Col>
+              <Col span={8}>
+                <Form.Item name="auto_unfavorite_after_seeding" label="做种后取消收藏" valuePropName="checked" initialValue={true} tooltip="种子完成下载并开始做种后，自动取消收藏">
+                  <Switch />
+                </Form.Item>
+              </Col>
+              <Col span={8}>
+                <Form.Item name="free_only" label="仅免费" valuePropName="checked" initialValue={true} tooltip="只下载变为免费的收藏种子">
+                  <Switch />
+                </Form.Item>
+              </Col>
+            </Row>
+          )}
+
+          {/* 普通规则配置 */}
+          {selectedRuleType === 'normal' && (
+            <Row gutter={16}>
+              <Col span={6}>
                 <Form.Item name="free_only" label="仅免费" valuePropName="checked">
                    <Switch />
                 </Form.Item>
-             </Col>
-          </Row>
+              </Col>
+            </Row>
+          )}
           
           <Row gutter={16}>
              <Col span={6}>

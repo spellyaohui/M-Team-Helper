@@ -48,11 +48,26 @@ async def lifespan(app: FastAPI):
     """应用生命周期管理：启动和关闭时的处理"""
     # 启动时执行
     app_logger.info("M-Team Helper 服务启动")
+
+    # 1. 初始化数据库连接
     init_db()
+
+    # 2. 自动检查并迁移数据库结构
+    app_logger.info("检查数据库结构...")
+    try:
+        from utils.db_migration import auto_migrate_database
+        migration_success = auto_migrate_database()
+        if not migration_success:
+            app_logger.warning("⚠️  数据库迁移过程中有错误，请检查日志")
+    except Exception as e:
+        app_logger.error(f"数据库自动迁移失败: {e}")
+        app_logger.warning("将尝试继续启动服务...")
+
+    # 3. 启动调度器
     start_scheduler()
-    
+
     yield  # 应用运行中
-    
+
     # 关闭时执行
     app_logger.info("M-Team Helper 服务关闭")
     stop_scheduler()

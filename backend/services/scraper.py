@@ -172,25 +172,25 @@ class MTeamAPI:
     
     async def query_tracker_history(self, torrent_ids: List[str]) -> Dict[str, Any]:
         """查询种子的下载历史
-        
+
         这个接口可以查询用户是否曾经下载过某些种子，
         用于避免重复下载已经下载过的种子。
-        
+
         Args:
             torrent_ids: 种子 ID 列表
-            
+
         Returns:
             包含 historyMap 的字典，key 是种子 ID，value 是下载历史信息
         """
         if not torrent_ids:
             return {"success": True, "data": {"historyMap": {}, "peerMap": {}}}
-        
+
         import time
         payload = {
             "tids": torrent_ids,
             "_timestamp": int(time.time() * 1000)
         }
-        
+
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.post(
@@ -202,18 +202,109 @@ class MTeamAPI:
                     },
                     json=payload
                 )
-                
+
                 if response.status_code != 200:
                     return {"success": False, "error": f"HTTP错误: {response.status_code}"}
-                
+
                 result = response.json()
                 if result.get("code") == "0":
                     return {"success": True, "data": result.get("data", {})}
                 else:
                     return {"success": False, "error": result.get("message", "查询失败")}
-                    
+
         except Exception as e:
             return {"success": False, "error": f"请求异常: {str(e)}"}
+
+    async def get_favorites(
+        self,
+        mode: str = "normal",
+        page: int = 1,
+        page_size: int = 100
+    ) -> Dict[str, Any]:
+        """获取收藏列表
+
+        Args:
+            mode: 模式（normal 或 adult）
+            page: 页码
+            page_size: 每页数量
+
+        Returns:
+            收藏种子列表
+        """
+        data = {
+            "mode": mode,
+            "onlyFav": 1,
+            "visible": 1,
+            "pageNumber": page,
+            "pageSize": page_size
+        }
+        return await self._request("torrent/search", data)
+
+    async def add_favorite(self, torrent_id: str) -> Dict[str, Any]:
+        """添加收藏
+
+        Args:
+            torrent_id: 种子 ID
+
+        Returns:
+            操作结果
+        """
+        data = {
+            "id": str(torrent_id),
+            "make": "true"
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                response = await client.post(
+                    f"{self.base_url}/torrent/collection",
+                    headers={"x-api-key": self.api_key},
+                    data=data  # 使用 form-data 格式
+                )
+
+                if response.status_code != 200:
+                    return {"success": False, "message": f"HTTP错误: {response.status_code}"}
+
+                result = response.json()
+                return {
+                    "success": result.get("code") == "0",
+                    "message": result.get("message", "操作失败")
+                }
+        except Exception as e:
+            return {"success": False, "message": f"请求异常: {str(e)}"}
+
+    async def remove_favorite(self, torrent_id: str) -> Dict[str, Any]:
+        """取消收藏
+
+        Args:
+            torrent_id: 种子 ID
+
+        Returns:
+            操作结果
+        """
+        data = {
+            "id": str(torrent_id),
+            "make": "false"
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                response = await client.post(
+                    f"{self.base_url}/torrent/collection",
+                    headers={"x-api-key": self.api_key},
+                    data=data  # 使用 form-data 格式
+                )
+
+                if response.status_code != 200:
+                    return {"success": False, "message": f"HTTP错误: {response.status_code}"}
+
+                result = response.json()
+                return {
+                    "success": result.get("code") == "0",
+                    "message": result.get("message", "操作失败")
+                }
+        except Exception as e:
+            return {"success": False, "message": f"请求异常: {str(e)}"}
 
 
 # 折扣类型映射

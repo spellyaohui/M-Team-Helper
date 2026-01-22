@@ -48,6 +48,9 @@ class FilterRule(Base):
     # 模式：normal 或 adult
     mode = Column(String(20), default="normal")
     
+    # 规则类型：normal=普通规则, favorite=收藏监控规则
+    rule_type = Column(String(20), default="normal")  # normal 或 favorite
+
     # 筛选条件
     free_only = Column(Boolean, default=False)  # 仅免费
     double_upload = Column(Boolean, default=False)  # 2x上传
@@ -59,6 +62,10 @@ class FilterRule(Base):
     keywords = Column(String(500), nullable=True)  # 关键词（逗号分隔）
     exclude_keywords = Column(String(500), nullable=True)  # 排除关键词
     max_publish_hours = Column(Integer, nullable=True)  # 最大发布时间（小时），只下载N小时内发布的种子
+
+    # 收藏监控配置（仅当 rule_type=favorite 时有效）
+    monitor_favorites = Column(Boolean, default=False)  # 是否监控收藏
+    auto_unfavorite_after_seeding = Column(Boolean, default=True)  # 做种后自动取消收藏
     
     # 下载器配置
     downloader_id = Column(Integer, ForeignKey("downloaders.id"), nullable=True)
@@ -115,6 +122,10 @@ class DownloadHistory(Base):
     info_hash = Column(String(64), nullable=True, index=True)  # 添加索引，用于查找特定种子
     discount_type = Column(String(20), nullable=True)  # 促销类型：FREE, _2X_FREE 等
     discount_end_time = Column(DateTime, nullable=True, index=True)  # 添加索引，用于过期检查
+
+    # 收藏相关
+    is_favorited = Column(Boolean, default=False)  # 是否已收藏（用于收藏监控规则）
+    unfavorited_at = Column(DateTime, nullable=True)  # 取消收藏时间
     
     # 封面图片
     images = Column(JSON, nullable=True)  # 种子封面图片 URL 列表
