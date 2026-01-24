@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Table, Button, Select, Input, Tag, message, Form, InputNumber, Card, Row, Col, theme, Tooltip, Modal, Space } from 'antd';
+import { App, Table, Button, Select, Input, Tag, Form, InputNumber, Card, Row, Col, theme, Tooltip, Modal, Space } from 'antd';
 import { SearchOutlined, DownloadOutlined, CloudDownloadOutlined, FileTextOutlined, SendOutlined } from '@ant-design/icons';
 import { accountApi, torrentApi, downloaderApi } from '../api';
 
@@ -44,6 +44,7 @@ const modeOptions = [
 ];
 
 export default function TorrentPage() {
+  const { message } = App.useApp();
   const { token } = useToken();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [accountId, setAccountId] = useState<number | null>(null);

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Form, Input, Button, Card, message, Typography, theme, ConfigProvider } from 'antd';
+import { App, Form, Input, Button, Card, Typography, theme, ConfigProvider } from 'antd';
 import { UserOutlined, LockOutlined, RocketOutlined } from '@ant-design/icons';
 import { authApi } from '../api';
 
@@ -15,6 +15,7 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
   const [needInit, setNeedInit] = useState(false);
   const [form] = Form.useForm();
   
+  const { message } = App.useApp();
   // 使用 Ant Design Token
   const { token } = theme.useToken();
 
@@ -52,7 +53,7 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
       <div className="login-bg-shape-1" />
       <div className="login-bg-shape-2" />
       
-      <Card className="login-card" bordered={false}>
+      <Card className="login-card" variant="borderless">
         <div className="login-header">
           <div className="login-logo-wrapper">
             <RocketOutlined className="login-logo" />
@@ -94,7 +95,7 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
               <Input 
                 prefix={<UserOutlined style={{ color: token.colorTextSecondary }} />} 
                 placeholder="用户名" 
-                bordered={false}
+                variant="borderless"
                 style={{ background: 'rgba(0,0,0,0.04)' }}
               />
             </Form.Item>
@@ -107,7 +108,7 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
               <Input.Password 
                 prefix={<LockOutlined style={{ color: token.colorTextSecondary }} />} 
                 placeholder="密码" 
-                bordered={false}
+                variant="borderless"
                 style={{ background: 'rgba(0,0,0,0.04)' }}
               />
             </Form.Item>

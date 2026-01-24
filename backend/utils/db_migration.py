@@ -107,6 +107,46 @@ def add_missing_column(table_name: str, column_name: str, column):
         return False
 
 
+def backfill_filter_rule_sort_order():
+    """为已有规则补全 sort_order（仅对 NULL 生效）"""
+    logger.info("检查并填充 filter_rules.sort_order ...")
+
+    with engine.connect() as conn:
+        result = conn.execute(text("PRAGMA table_info(filter_rules)"))
+        columns = [row[1] for row in result.fetchall()]
+        if "sort_order" not in columns:
+            logger.info("filter_rules.sort_order 不存在，跳过填充")
+            return
+
+        rows = conn.execute(text("SELECT id, sort_order FROM filter_rules ORDER BY id ASC")).fetchall()
+        if not rows:
+            return
+
+        max_order = -1
+        for row in rows:
+            order_val = row[1]
+            if order_val is not None and order_val > max_order:
+                max_order = order_val
+
+        updated = 0
+        for row in rows:
+            rule_id = row[0]
+            order_val = row[1]
+            if order_val is None:
+                max_order += 1
+                conn.execute(
+                    text("UPDATE filter_rules SET sort_order = :order WHERE id = :id AND sort_order IS NULL"),
+                    {"order": max_order, "id": rule_id}
+                )
+                updated += 1
+
+        if updated > 0:
+            conn.commit()
+            logger.info(f"已填充 {updated} 条规则的 sort_order")
+        else:
+            logger.info("规则 sort_order 已完整，无需填充")
+
+
 def check_and_migrate_table(model_class, table_name: str = None) -> dict:
     """检查并迁移单个表
 
@@ -185,6 +225,11 @@ def auto_migrate_database():
             stats = check_and_migrate_table(model)
             for key in total_stats:
                 total_stats[key] += stats[key]
+        # 特殊数据修复：为 filter_rules 填充 sort_order
+        try:
+            backfill_filter_rule_sort_order()
+        except Exception as e:
+            logger.warning(f"填充规则排序失败: {e}")
 
         logger.info("=" * 60)
         logger.info("数据库迁移检查完成")

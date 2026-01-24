@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Table, Button, Modal, Form, Input, Select, InputNumber, message, Space, Tag, Popconfirm, Switch } from 'antd';
+import { App, Table, Button, Modal, Form, Input, Select, InputNumber, Space, Tag, Popconfirm, Switch } from 'antd';
 import { PlusOutlined, ApiOutlined, DeleteOutlined } from '@ant-design/icons';
 import { downloaderApi } from '../api';
 
@@ -15,6 +15,7 @@ interface Downloader {
 }
 
 export default function DownloaderPage() {
+  const { message } = App.useApp();
   const [downloaders, setDownloaders] = useState<Downloader[]>([]);
   const [loading, setLoading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);

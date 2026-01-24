@@ -1,0 +1,114 @@
+2026-01-16 11:57:06 [INFO] scheduler:  定时任务已启动
+2026-01-16 11:57:06 [INFO] scheduler:  账号刷新间隔: 600秒
+2026-01-16 11:57:06 [INFO] scheduler:  种子检查间隔: 600秒
+2026-01-16 11:57:06 [INFO] scheduler:  过期检查间隔: 120秒
+2026-01-16 11:57:06 [INFO] scheduler:  状态同步间隔: 60秒
+2026-01-16 11:59:06 [INFO] scheduler:  检查下载中的非免费/过期种子，找到 0 个需要处理
+2026-01-16 11:59:06 [INFO] scheduler:  删种设置: 启用=True, 范围=all, 检查标签=False
+2026-01-16 12:01:06 [INFO] scheduler:  检查下载中的非免费/过期种子，找到 0 个需要处理
+2026-01-16 12:01:06 [INFO] scheduler:  删种设置: 启用=True, 范围=all, 检查标签=False
+2026-01-16 12:03:06 [INFO] scheduler:  检查下载中的非免费/过期种子，找到 0 个需要处理
+2026-01-16 12:03:06 [INFO] scheduler:  删种设置: 启用=True, 范围=all, 检查标签=False
+2026-01-16 12:05:06 [INFO] scheduler:  检查下载中的非免费/过期种子，找到 0 个需要处理
+2026-01-16 12:05:06 [INFO] scheduler:  删种设置: 启用=True, 范围=all, 检查标签=False
+2026-01-16 12:07:06 [INFO] scheduler: 自动下载任务在当前时间段被禁用，跳过
+2026-01-16 12:07:06 [INFO] scheduler:  检查下载中的非免费/过期种子，找到 0 个需要处理
+2026-01-16 12:07:06 [INFO] scheduler:  删种设置: 启用=True, 范围=all, 检查标签=False
+2026-01-16 12:07:06 [INFO] scheduler: 开始检查被站点删除的种子（Tracker unregistered）
+2026-01-16 12:07:06 [INFO] scheduler: 检查下载器: qBittorrent
+2026-01-16 12:07:07 [INFO] scheduler: 下载器 qBittorrent 共有 195 个种子
+2026-01-16 12:07:07 [INFO] scheduler: 刷新账号 yaohui 成功
+2026-01-16 12:08:12 [INFO] scheduler: 检查完成，没有发现被站点删除的种子
+2026-01-16 12:09:06 [INFO] scheduler:  检查下载中的非免费/过期种子，找到 0 个需要处理
+2026-01-16 12:09:06 [INFO] scheduler:  删种设置: 启用=True, 范围=all, 检查标签=False
+2026-01-16 12:11:06 [INFO] scheduler:  检查下载中的非免费/过期种子，找到 0 个需要处理
+2026-01-16 12:11:06 [INFO] scheduler:  删种设置: 启用=True, 范围=all, 检查标签=False
+2026-01-16 12:13:06 [INFO] scheduler:  检查下载中的非免费/过期种子，找到 0 个需要处理
+2026-01-16 12:13:06 [INFO] scheduler:  删种设置: 启用=True, 范围=all, 检查标签=False
+2026-01-16 12:15:06 [INFO] scheduler:  检查下载中的非免费/过期种子，找到 0 个需要处理
+2026-01-16 12:15:06 [INFO] scheduler:  删种设置: 启用=True, 范围=all, 检查标签=False
+2026-01-16 12:17:06 [INFO] scheduler: 自动下载任务在当前时间段被禁用，跳过
+2026-01-16 12:17:06 [INFO] scheduler:  检查下载中的非免费/过期种子，找到 0 个需要处理
+2026-01-16 12:17:06 [INFO] scheduler:  删种设置: 启用=True, 范围=all, 检查标签=False
+2026-01-16 12:17:06 [INFO] scheduler: 开始检查被站点删除的种子（Tracker unregistered）
+2026-01-16 12:17:06 [INFO] scheduler: 检查下载器: qBittorrent
+2026-01-16 12:17:06 [INFO] scheduler: 下载器 qBittorrent 共有 195 个种子
+2026-01-16 12:17:07 [INFO] scheduler: 刷新账号 yaohui 成功
+2026-01-16 12:18:24 [INFO] scheduler: 检查完成，没有发现被站点删除的种子
+2026-01-16 12:19:06 [INFO] scheduler:  检查下载中的非免费/过期种子，找到 0 个需要处理
+2026-01-16 12:19:06 [INFO] scheduler:  删种设置: 启用=True, 范围=all, 检查标签=False
+2026-01-16 12:21:06 [INFO] scheduler:  检查下载中的非免费/过期种子，找到 0 个需要处理
+2026-01-16 12:21:06 [INFO] scheduler:  删种设置: 启用=True, 范围=all, 检查标签=False
+2026-01-16 12:23:06 [INFO] scheduler:  检查下载中的非免费/过期种子，找到 0 个需要处理
+2026-01-16 12:23:06 [INFO] scheduler:  删种设置: 启用=True, 范围=all, 检查标签=False
+2026-01-16 12:25:06 [INFO] scheduler:  检查下载中的非免费/过期种子，找到 0 个需要处理
+2026-01-16 12:25:06 [INFO] scheduler:  删种设置: 启用=True, 范围=all, 检查标签=False
+2026-01-16 12:27:06 [INFO] scheduler: 自动下载任务在当前时间段被禁用，跳过
+2026-01-16 12:27:06 [INFO] scheduler:  检查下载中的非免费/过期种子，找到 0 个需要处理
+2026-01-16 12:27:06 [INFO] scheduler:  删种设置: 启用=True, 范围=all, 检查标签=False
+2026-01-16 12:27:06 [INFO] scheduler:  开始检查动态删种，最大容量: 10000.0 GB，最小容量: 9000.0 GB
+2026-01-16 12:27:06 [INFO] scheduler:  检查下载器: qBittorrent
+2026-01-16 12:27:06 [INFO] scheduler:  下载器 qBittorrent 磁盘状态: 种子占用 2751.09 GB, 剩余 8260.15 GB
+2026-01-16 12:27:06 [INFO] scheduler:  触发阈值: 已用 > 10000.0 GB, 目标已用: 9000.0 GB
+2026-01-16 12:27:06 [INFO] scheduler:  下载器 qBittorrent 已用空间未超阈值（2751.09 <= 10000.0 GB），跳过
+2026-01-16 12:27:06 [INFO] scheduler: 开始检查被站点删除的种子（Tracker unregistered）
+2026-01-16 12:27:06 [INFO] scheduler: 检查下载器: qBittorrent
+2026-01-16 12:27:07 [INFO] scheduler: 下载器 qBittorrent 共有 195 个种子
+2026-01-16 12:27:08 [INFO] scheduler: 刷新账号 yaohui 成功
+2026-01-16 12:27:53 [INFO] scheduler: 检查完成，没有发现被站点删除的种子
+2026-01-16 12:29:06 [INFO] scheduler:  检查下载中的非免费/过期种子，找到 0 个需要处理
+2026-01-16 12:29:06 [INFO] scheduler:  删种设置: 启用=True, 范围=all, 检查标签=False
+2026-01-16 12:31:06 [INFO] scheduler:  检查下载中的非免费/过期种子，找到 0 个需要处理
+2026-01-16 12:31:06 [INFO] scheduler:  删种设置: 启用=True, 范围=all, 检查标签=False
+2026-01-16 12:33:06 [INFO] scheduler:  检查下载中的非免费/过期种子，找到 0 个需要处理
+2026-01-16 12:33:06 [INFO] scheduler:  删种设置: 启用=True, 范围=all, 检查标签=False
+2026-01-16 12:35:06 [INFO] scheduler:  检查下载中的非免费/过期种子，找到 0 个需要处理
+2026-01-16 12:35:06 [INFO] scheduler:  删种设置: 启用=True, 范围=all, 检查标签=False
+2026-01-16 12:37:06 [INFO] scheduler:  检查下载中的非免费/过期种子，找到 0 个需要处理
+2026-01-16 12:37:06 [INFO] scheduler:  删种设置: 启用=True, 范围=all, 检查标签=False
+2026-01-16 12:37:06 [INFO] scheduler: 开始检查被站点删除的种子（Tracker unregistered）
+2026-01-16 12:37:06 [INFO] scheduler: 检查下载器: qBittorrent
+2026-01-16 12:37:07 [INFO] scheduler: 规则 '刷流下载AV' 下载队列已满 (1/1)，跳过网站访问
+2026-01-16 12:37:07 [INFO] scheduler: 下载器 qBittorrent 共有 197 个种子
+2026-01-16 12:37:07 [INFO] scheduler: 刷新账号 yaohui 成功
+2026-01-16 12:38:16 [INFO] scheduler: 检查完成，没有发现被站点删除的种子
+2026-01-16 12:39:06 [INFO] scheduler:  检查下载中的非免费/过期种子，找到 0 个需要处理
+2026-01-16 12:39:06 [INFO] scheduler:  删种设置: 启用=True, 范围=all, 检查标签=False
+2026-01-16 12:41:06 [INFO] scheduler:  检查下载中的非免费/过期种子，找到 0 个需要处理
+2026-01-16 12:41:06 [INFO] scheduler:  删种设置: 启用=True, 范围=all, 检查标签=False
+2026-01-16 12:43:06 [INFO] scheduler:  检查下载中的非免费/过期种子，找到 0 个需要处理
+2026-01-16 12:43:06 [INFO] scheduler:  删种设置: 启用=True, 范围=all, 检查标签=False
+2026-01-16 12:45:06 [INFO] scheduler:  检查下载中的非免费/过期种子，找到 0 个需要处理
+2026-01-16 12:45:06 [INFO] scheduler:  删种设置: 启用=True, 范围=all, 检查标签=False
+2026-01-16 12:47:06 [INFO] scheduler:  检查下载中的非免费/过期种子，找到 0 个需要处理
+2026-01-16 12:47:06 [INFO] scheduler:  删种设置: 启用=True, 范围=all, 检查标签=False
+2026-01-16 12:47:06 [INFO] scheduler: 开始检查被站点删除的种子（Tracker unregistered）
+2026-01-16 12:47:06 [INFO] scheduler: 检查下载器: qBittorrent
+2026-01-16 12:47:07 [INFO] scheduler: 规则 '刷流下载AV' 下载队列已满 (1/1)，跳过网站访问
+2026-01-16 12:47:07 [INFO] scheduler: 下载器 qBittorrent 共有 197 个种子
+2026-01-16 12:47:07 [INFO] scheduler: 刷新账号 yaohui 成功
+2026-01-16 12:48:21 [INFO] scheduler: 检查完成，没有发现被站点删除的种子
+2026-01-16 12:49:06 [INFO] scheduler:  检查下载中的非免费/过期种子，找到 0 个需要处理
+2026-01-16 12:49:06 [INFO] scheduler:  删种设置: 启用=True, 范围=all, 检查标签=False
+2026-01-16 12:51:06 [INFO] scheduler:  检查下载中的非免费/过期种子，找到 0 个需要处理
+2026-01-16 12:51:06 [INFO] scheduler:  删种设置: 启用=True, 范围=all, 检查标签=False
+2026-01-16 12:53:06 [INFO] scheduler:  检查下载中的非免费/过期种子，找到 0 个需要处理
+2026-01-16 12:53:06 [INFO] scheduler:  删种设置: 启用=True, 范围=all, 检查标签=False
+2026-01-16 12:55:06 [INFO] scheduler:  检查下载中的非免费/过期种子，找到 0 个需要处理
+2026-01-16 12:55:06 [INFO] scheduler:  删种设置: 启用=True, 范围=all, 检查标签=False
+2026-01-16 12:57:06 [INFO] scheduler:  检查下载中的非免费/过期种子，找到 0 个需要处理
+2026-01-16 12:57:06 [INFO] scheduler:  删种设置: 启用=True, 范围=all, 检查标签=False
+2026-01-16 12:57:06 [INFO] scheduler:  开始检查动态删种，最大容量: 10000.0 GB，最小容量: 9000.0 GB
+2026-01-16 12:57:06 [INFO] scheduler:  检查下载器: qBittorrent
+2026-01-16 12:57:07 [INFO] scheduler:  下载器 qBittorrent 磁盘状态: 种子占用 2767.28 GB, 剩余 8256.46 GB
+2026-01-16 12:57:07 [INFO] scheduler:  触发阈值: 已用 > 10000.0 GB, 目标已用: 9000.0 GB
+2026-01-16 12:57:07 [INFO] scheduler:  下载器 qBittorrent 已用空间未超阈值（2767.28 <= 10000.0 GB），跳过
+2026-01-16 12:57:07 [INFO] scheduler: 规则 '刷流下载AV' 下载队列已满 (1/1)，跳过网站访问
+2026-01-16 12:57:07 [INFO] scheduler: 刷新账号 yaohui 成功
+2026-01-16 12:59:06 [INFO] scheduler:  检查下载中的非免费/过期种子，找到 0 个需要处理
+2026-01-16 12:59:06 [INFO] scheduler:  删种设置: 启用=True, 范围=all, 检查标签=False
+2026-01-16 13:01:06 [INFO] scheduler:  检查下载中的非免费/过期种子，找到 0 个需要处理
+2026-01-16 13:01:06 [INFO] scheduler:  删种设置: 启用=True, 范围=all, 检查标签=False
+2026-01-16 13:03:06 [INFO] scheduler:  检查下载中的非免费/过期种子，找到 0 个需要处理
+2026-01-16 13:03:06 [INFO] scheduler:  删种设置: 启用=True, 范围=all, 检查标签=False
+2026-01-16 13:03:25 [INFO] scheduler: 定时任务已停止

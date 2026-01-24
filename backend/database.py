@@ -63,6 +63,7 @@ def run_migrations():
     migrations = [
         # (表名, 列名, 列定义)
         ("filter_rules", "max_publish_hours", "INTEGER"),
+        ("filter_rules", "sort_order", "INTEGER"),
     ]
     
     with engine.connect() as conn:

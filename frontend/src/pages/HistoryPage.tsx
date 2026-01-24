@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Table, Button, Select, Tag, message, Popconfirm, Space, Tooltip, Modal, Upload, Form, Input } from 'antd';
+import { App, Table, Button, Select, Tag, Popconfirm, Space, Tooltip, Modal, Upload, Form, Input } from 'antd';
 import { DeleteOutlined, ClearOutlined, SyncOutlined, InfoCircleOutlined, UploadOutlined, InboxOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { accountApi, historyApi, downloaderApi } from '../api';
@@ -56,6 +56,7 @@ const discountMap: Record<string, { text: string; color: string }> = {
 };
 
 export default function HistoryPage() {
+  const { message } = App.useApp();
   const [history, setHistory] = useState<History[]>([]);
   const [accounts, setAccounts] = useState<any[]>([]);
   const [downloaders, setDownloaders] = useState<any[]>([]);

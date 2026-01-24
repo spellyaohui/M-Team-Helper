@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+  App,
   Card,
   Form,
   InputNumber,
@@ -9,7 +10,6 @@ import {
   Statistic,
   Row,
   Col,
-  message,
   Divider,
   Tag,
   Space,
@@ -105,6 +105,7 @@ interface TimeRange {
 
 // 定时运行控制组件
 const ScheduleControlForm: React.FC = () => {
+  const { message } = App.useApp();
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [scheduleSettings, setScheduleSettings] = useState<ScheduleSettings>({
@@ -385,6 +386,7 @@ const TimeRangeForm: React.FC<{
 };
 
 const SettingsPage: React.FC = () => {
+  const { message } = App.useApp();
   const [refreshForm] = Form.useForm();
   const [autoDeleteForm] = Form.useForm();
   const [loading, setLoading] = useState(false);

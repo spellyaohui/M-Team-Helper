@@ -1,6 +1,27 @@
-import { useState, useEffect } from 'react';
-import { Table, Button, Modal, Form, Input, Switch, InputNumber, Select, message, Space, Tag, Popconfirm, Checkbox, Card, theme, Row, Col } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, FilterOutlined } from '@ant-design/icons';
+import { useState, useEffect, createContext, useContext, type HTMLAttributes, type CSSProperties } from 'react';
+import { createPortal } from 'react-dom';
+import { App, Table, Button, Modal, Form, Input, Switch, InputNumber, Select, Space, Tag, Popconfirm, Checkbox, Card, theme, Row, Col, Spin } from 'antd';
+import { PlusOutlined, EditOutlined, DeleteOutlined, FilterOutlined, MenuOutlined } from '@ant-design/icons';
+import {
+  DndContext,
+  PointerSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  closestCenter,
+  DragOverlay,
+  type DragEndEvent,
+  type DragStartEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { snapCenterToCursor } from '@dnd-kit/modifiers';
 import { accountApi, ruleApi, downloaderApi, torrentApi } from '../api';
 
 const { useToken } = theme;
@@ -13,6 +34,7 @@ interface Rule {
   mode: string;
   rule_type: string;  // normal 或 favorite
   free_only: boolean;
+  double_upload: boolean;
   min_size: number | null;
   max_size: number | null;
   min_seeders: number | null;
@@ -27,6 +49,7 @@ interface Rule {
   save_path: string | null;
   tags: string[] | null;
   max_downloading: number | null;
+  sort_order: number | null;
 }
 
 const modeOptions = [
@@ -39,7 +62,53 @@ const ruleTypeOptions = [
   { value: 'favorite', label: '收藏监控' },
 ];
 
+const RowContext = createContext<{
+  setActivatorNodeRef?: (element: HTMLElement | null) => void;
+  listeners?: any;
+} | null>(null);
+
+const DragHandle = () => {
+  const context = useContext(RowContext);
+  if (!context) return null;
+  return (
+    <Button
+      type="text"
+      size="small"
+      icon={<MenuOutlined />}
+      ref={context.setActivatorNodeRef}
+      {...context.listeners}
+    />
+  );
+};
+
+const DraggableRow = (props: HTMLAttributes<HTMLTableRowElement>) => {
+  const rowKey = (props as { 'data-row-key': number | string })['data-row-key'];
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: rowKey });
+
+  const style: CSSProperties = {
+    ...props.style,
+    transform: CSS.Transform.toString(transform),
+    transition,
+    ...(isDragging ? { position: 'relative', zIndex: 10000 } : {}),
+  };
+
+  return (
+    <RowContext.Provider value={{ setActivatorNodeRef, listeners }}>
+      <tr ref={setNodeRef} style={style} {...attributes} {...props} />
+    </RowContext.Provider>
+  );
+};
+
 export default function RulePage() {
+  const { message } = App.useApp();
   const { token } = useToken();
   const [rules, setRules] = useState<Rule[]>([]);
   const [accounts, setAccounts] = useState<any[]>([]);
@@ -52,6 +121,8 @@ export default function RulePage() {
   const [categories, setCategories] = useState<any[]>([]);
   const [categoriesLoading, setCategoriesLoading] = useState(false);
   const [enableCategoryFilter, setEnableCategoryFilter] = useState(false);
+  const [sortSaving, setSortSaving] = useState(false);
+  const [activeId, setActiveId] = useState<number | null>(null);
   const [form] = Form.useForm();
 
   // 监听下载器选择变化，获取对应的标签列表
@@ -194,6 +265,11 @@ export default function RulePage() {
       message.error(e.response?.data?.detail || '操作失败');
     }
   };
+  const handleDragCancel = () => {
+    setActiveId(null);
+  };
+
+  const activeRule = activeId ? rules.find(r => r.id === activeId) : null;
 
   const handleEdit = (rule: Rule) => {
     setEditingRule(rule);
@@ -224,8 +300,84 @@ export default function RulePage() {
       message.error('操作失败');
     }
   };
+  const buildRulePayload = (rule: Rule, overrides: Partial<Rule> = {}) => {
+    const merged = { ...rule, ...overrides };
+    return {
+      account_id: merged.account_id,
+      name: merged.name,
+      is_enabled: merged.is_enabled,
+      mode: merged.mode,
+      rule_type: merged.rule_type,
+      free_only: merged.free_only,
+      double_upload: merged.double_upload ?? false,
+      min_size: merged.min_size,
+      max_size: merged.max_size,
+      min_seeders: merged.min_seeders,
+      max_seeders: merged.max_seeders,
+      categories: merged.categories,
+      keywords: merged.keywords,
+      exclude_keywords: merged.exclude_keywords,
+      max_publish_hours: merged.max_publish_hours,
+      monitor_favorites: merged.monitor_favorites,
+      auto_unfavorite_after_seeding: merged.auto_unfavorite_after_seeding,
+      downloader_id: merged.downloader_id,
+      save_path: merged.save_path,
+      tags: merged.tags,
+      max_downloading: merged.max_downloading,
+      sort_order: merged.sort_order,
+    };
+  };
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveId(event.active.id as number);
+  };
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    setActiveId(null);
+    if (sortSaving) return;
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const oldIndex = rules.findIndex(item => item.id === active.id);
+    const newIndex = rules.findIndex(item => item.id === over.id);
+    if (oldIndex < 0 || newIndex < 0) return;
+
+    const reordered = arrayMove(rules, oldIndex, newIndex).map((rule, index) => ({
+      ...rule,
+      sort_order: index + 1,
+    }));
+
+    const oldOrderMap = new Map(rules.map(r => [r.id, r.sort_order]));
+    setRules(reordered);
+
+    try {
+      const updates = reordered
+        .filter(r => oldOrderMap.get(r.id) !== r.sort_order)
+        .map(r => ruleApi.update(r.id, buildRulePayload(r, { sort_order: r.sort_order })));
+      if (updates.length > 0) {
+        setSortSaving(true);
+        message.loading({ content: '正在保存排序...', key: 'rule-sort', duration: 0 });
+        await Promise.all(updates);
+        message.success({ content: '排序已保存', key: 'rule-sort' });
+        setSortSaving(false);
+      }
+    } catch (e: any) {
+      message.error({ content: e.response?.data?.detail || '排序失败', key: 'rule-sort' });
+      setSortSaving(false);
+      fetchData();
+    }
+  };
 
   const columns = [
+    {
+      title: '',
+      key: 'sort',
+      width: 48,
+      render: () => <DragHandle />
+    },
     { 
       title: '规则名称', 
       dataIndex: 'name', 
@@ -300,7 +452,8 @@ export default function RulePage() {
     <>
       <Card 
          variant="borderless"
-         className="modern-card" 
+         className="modern-card rule-card" 
+         style={{ overflow: 'visible' }}
          title={
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <FilterOutlined style={{ color: token.colorSuccess }} />
@@ -317,15 +470,61 @@ export default function RulePage() {
                 添加规则
               </Button>
          }
-         styles={{ body: { padding: 0 } }}
+         styles={{ body: { padding: 0, overflow: 'visible' } }}
       >
-        <Table 
-           columns={columns} 
-           dataSource={rules} 
-           rowKey="id" 
-           loading={loading} 
-           pagination={{ pageSize: 10 }}
-        />
+        <Spin spinning={sortSaving} size="small" tip="保存中...">
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+            onDragCancel={handleDragCancel}
+          >
+            <SortableContext items={rules.map(r => r.id)} strategy={verticalListSortingStrategy}>
+              <Table 
+                columns={columns} 
+                dataSource={rules} 
+                rowKey="id"
+                className="rule-sort-table"
+                components={{ body: { row: DraggableRow } }}
+                loading={loading} 
+                pagination={{ pageSize: 10 }}
+              />
+            </SortableContext>
+            {createPortal(
+              <DragOverlay zIndex={9999} modifiers={[snapCenterToCursor]}>
+                {activeRule ? (
+                  <div style={{
+                    padding: 12,
+                    background: token.colorBgElevated,
+                    border: `1px solid ${token.colorBorderSecondary}`,
+                    borderRadius: 8,
+                    boxShadow: token.boxShadowSecondary,
+                    minWidth: 280,
+                    maxWidth: 420,
+                    transform: 'translate(80px, 0)',
+                    pointerEvents: 'none',
+                  }}>
+                    <div style={{ fontWeight: 600, marginBottom: 8 }}>{activeRule.name}</div>
+                    <Space wrap size={[4, 4]}>
+                      {activeRule.rule_type === 'favorite' && <Tag color="gold" variant="filled">收藏监控</Tag>}
+                      <Tag color={activeRule.mode === 'adult' ? 'magenta' : 'blue'} variant="filled">
+                        {activeRule.mode === 'adult' ? '成人' : '普通'}
+                      </Tag>
+                      {activeRule.free_only && <Tag color="green" variant="filled">免费</Tag>}
+                      {activeRule.max_publish_hours && <Tag color="cyan" variant="filled">≤{activeRule.max_publish_hours}h</Tag>}
+                      {activeRule.keywords && <Tag variant="filled" icon={<FilterOutlined />}>{activeRule.keywords}</Tag>}
+                      {activeRule.tags && activeRule.tags.length > 0 && (
+                        <Tag color="purple" variant="filled">标签: {activeRule.tags.join(', ')}</Tag>
+                      )}
+                    </Space>
+                  </div>
+                ) : null}
+              </DragOverlay>,
+              document.body
+            )}
+          </DndContext>
+        </Spin>
       </Card>
       
       <Modal 

@@ -51,6 +51,9 @@ class FilterRule(Base):
     # 规则类型：normal=普通规则, favorite=收藏监控规则
     rule_type = Column(String(20), default="normal")  # normal 或 favorite
 
+    # 规则排序（数字越小越靠前）
+    sort_order = Column(Integer, nullable=True, index=True)
+
     # 筛选条件
     free_only = Column(Boolean, default=False)  # 仅免费
     double_upload = Column(Boolean, default=False)  # 2x上传

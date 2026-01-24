@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Table, Button, Modal, Form, Input, message, Space, Tag, Popconfirm } from 'antd';
+import { App, Table, Button, Modal, Form, Input, Space, Tag, Popconfirm } from 'antd';
 import { PlusOutlined, ReloadOutlined, DeleteOutlined } from '@ant-design/icons';
 import { accountApi } from '../api';
 
@@ -24,6 +24,7 @@ const formatBytes = (bytes: number) => {
 };
 
 export default function AccountPage() {
+  const { message } = App.useApp();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);

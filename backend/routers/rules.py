@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
@@ -31,6 +32,7 @@ class RuleCreate(BaseModel):
     save_path: Optional[str] = None
     tags: Optional[List[str]] = None  # 下载时添加的标签
     max_downloading: Optional[int] = None  # 最大同时下载数
+    sort_order: Optional[int] = None  # 规则排序（数字越小越靠前）
 
 class RuleResponse(BaseModel):
     id: int
@@ -55,6 +57,7 @@ class RuleResponse(BaseModel):
     save_path: Optional[str]
     tags: Optional[List[str]]
     max_downloading: Optional[int]
+    sort_order: Optional[int]
     created_at: datetime
 
     class Config:
@@ -69,6 +72,10 @@ async def list_rules(
     query = db.query(FilterRule)
     if account_id:
         query = query.filter(FilterRule.account_id == account_id)
+    query = query.order_by(
+        func.coalesce(FilterRule.sort_order, 1000000),
+        FilterRule.id.asc()
+    )
     return query.all()
 
 @router.post("/", response_model=RuleResponse)
@@ -85,6 +92,11 @@ async def create_rule(rule: RuleCreate, db: Session = Depends(get_db)):
         if not downloader:
             raise HTTPException(status_code=404, detail="下载器不存在")
     
+    sort_order = rule.sort_order
+    if sort_order is None:
+        max_order = db.query(func.max(FilterRule.sort_order)).scalar()
+        sort_order = (max_order or 0) + 1
+
     db_rule = FilterRule(
         account_id=rule.account_id,
         name=rule.name,
@@ -106,7 +118,8 @@ async def create_rule(rule: RuleCreate, db: Session = Depends(get_db)):
         downloader_id=rule.downloader_id,
         save_path=rule.save_path,
         tags=rule.tags,
-        max_downloading=rule.max_downloading
+        max_downloading=rule.max_downloading,
+        sort_order=sort_order
     )
     db.add(db_rule)
     db.commit()
@@ -129,6 +142,8 @@ async def update_rule(rule_id: int, rule: RuleCreate, db: Session = Depends(get_
         raise HTTPException(status_code=404, detail="规则不存在")
     
     for key, value in rule.model_dump().items():
+        if key == "sort_order" and value is None:
+            continue
         setattr(db_rule, key, value)
     
     db.commit()

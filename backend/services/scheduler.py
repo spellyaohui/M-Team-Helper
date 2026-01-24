@@ -4,6 +4,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.triggers.date import DateTrigger
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 import json
 
 from database import SessionLocal
@@ -184,6 +185,165 @@ async def execute_precise_delete(history_id: int, torrent_name: str, info_hash: 
         logger.error(f"精准删种执行失败 {torrent_name}: {e}")
     finally:
         db.close()
+
+def get_rule_ordering():
+    """规则排序：按 sort_order，再按 id"""
+    return [
+        func.coalesce(FilterRule.sort_order, 1000000),
+        FilterRule.id.asc()
+    ]
+
+
+async def process_favorite_rule(rule: FilterRule, account: Account, db: Session):
+    """处理单条收藏监控规则"""
+    # 检查下载队列限制
+    if rule.downloader_id and rule.max_downloading:
+        downloader = db.query(Downloader).filter(
+            Downloader.id == rule.downloader_id
+        ).first()
+
+        if downloader:
+            try:
+                current_downloading = await get_downloading_count(downloader)
+                if current_downloading >= rule.max_downloading:
+                    logger.info(f"收藏监控规则 '{rule.name}' 下载队列已满 ({current_downloading}/{rule.max_downloading})，跳过")
+                    return
+            except Exception as e:
+                logger.error(f"检查下载器队列失败: {e}")
+                return
+
+    api = MTeamAPI(account.api_key)
+
+    # 获取收藏列表
+    logger.info(f"收藏监控规则 '{rule.name}' 开始检查收藏，模式={rule.mode}")
+    result = await api.get_favorites(mode=rule.mode, page=1, page_size=100)
+
+    if not result["success"]:
+        logger.warning(f"获取收藏列表失败: {result.get('error')}")
+        return
+
+    favorites = [parse_torrent(t) for t in result["data"].get("data", [])]
+    logger.info(f"收藏监控规则 '{rule.name}' 获取到 {len(favorites)} 个收藏种子")
+
+    for torrent in favorites:
+        # 检查是否已在本地下载历史中（排除已删除的种子）
+        existing = db.query(DownloadHistory).filter(
+            DownloadHistory.account_id == account.id,
+            DownloadHistory.torrent_id == torrent["id"],
+            DownloadHistory.status.notin_(["deleted", "expired_deleted", "dynamic_deleted"])
+        ).first()
+
+        if existing:
+            logger.info(f"跳过收藏种子 {torrent['name']}: 已存在下载记录 (状态: {existing.status})")
+            continue
+
+        # 检查是否为免费种子
+        if not torrent.get("is_free"):
+            logger.info(f"跳过收藏种子 {torrent['name']}: 不是免费种子 (促销: {torrent.get('discount')})")
+            continue
+
+        # 检查是否匹配其他筛选条件
+        if not match_torrent(torrent, rule):
+            logger.info(f"跳过收藏种子 {torrent['name']}: 不匹配筛选条件")
+            continue
+
+        # 检查促销到期时间
+        if torrent.get("discount_end_time"):
+            try:
+                ts = torrent["discount_end_time"]
+                if isinstance(ts, (int, float)):
+                    expire_time = datetime.fromtimestamp(ts / 1000 if ts > 1e10 else ts)
+                else:
+                    expire_time = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+
+                if expire_time:
+                    now = beijing_now()
+                    remaining_seconds = (expire_time - now).total_seconds()
+                    if remaining_seconds < 600:  # 少于10分钟
+                        logger.info(f"跳过收藏种子 {torrent['name']}: 促销仅剩 {remaining_seconds:.0f} 秒")
+                        continue
+            except Exception as e:
+                logger.debug(f"检查促销到期时间失败: {e}")
+
+        # 检查下载队列
+        if rule.downloader_id and rule.max_downloading:
+            downloader = db.query(Downloader).filter(
+                Downloader.id == rule.downloader_id
+            ).first()
+            if downloader:
+                current_downloading = await get_downloading_count(downloader)
+                if current_downloading >= rule.max_downloading:
+                    logger.info(f"下载队列已满，停止处理更多收藏种子")
+                    break
+
+        logger.info(f"收藏监控匹配: {torrent['name']} (免费)")
+
+        # 下载种子文件
+        torrent_content = await api.download_torrent(torrent["id"])
+        if not torrent_content:
+            logger.warning(f"下载种子文件失败: {torrent['name']}")
+            continue
+
+        # 保存种子文件
+        torrent_path = TORRENT_DIR / f"{torrent['id']}.torrent"
+        torrent_path.write_bytes(torrent_content)
+
+        # 推送到下载器
+        status = "downloaded"
+        info_hash = None
+        if rule.downloader_id:
+            downloader = db.query(Downloader).filter(
+                Downloader.id == rule.downloader_id
+            ).first()
+
+            if downloader:
+                info_hash = await add_torrent(
+                    downloader,
+                    str(torrent_path),
+                    rule.save_path,
+                    rule.tags
+                )
+                status = "pushing" if info_hash else "push_failed"
+                logger.info(f"推送到下载器: {bool(info_hash)}, hash: {info_hash}")
+
+        # 解析促销到期时间
+        discount_end_time = None
+        if torrent.get("discount_end_time"):
+            try:
+                ts = torrent["discount_end_time"]
+                if isinstance(ts, (int, float)):
+                    discount_end_time = datetime.fromtimestamp(ts / 1000 if ts > 1e10 else ts)
+                elif isinstance(ts, str):
+                    discount_end_time = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+            except Exception as e:
+                logger.warning(f"解析促销到期时间失败: {e}")
+
+        # 记录下载历史
+        history = DownloadHistory(
+            account_id=account.id,
+            torrent_id=torrent["id"],
+            torrent_name=torrent["name"],
+            torrent_size=torrent["size"],
+            rule_id=rule.id,
+            downloader_id=rule.downloader_id,
+            status=status,
+            info_hash=info_hash,
+            discount_type=torrent.get("discount"),
+            discount_end_time=discount_end_time,
+            images=torrent.get("images"),
+            is_favorited=True  # 标记为收藏种子
+        )
+        db.add(history)
+        db.commit()
+
+        # 调度精准删种任务
+        if discount_end_time and info_hash:
+            schedule_precise_delete(
+                history_id=history.id,
+                torrent_name=torrent["name"],
+                discount_end_time=discount_end_time,
+                info_hash=info_hash
+            )
 
 
 def cancel_precise_delete(history_id: int):
@@ -382,17 +542,26 @@ async def auto_download_torrents():
 
     db = SessionLocal()
     try:
-        # 获取所有启用的普通规则（排除收藏监控规则）
+        # 获取所有启用的规则（收藏优先 + sort_order）
         rules = db.query(FilterRule).filter(
-            FilterRule.is_enabled == True,
-            FilterRule.rule_type == "normal"
-        ).all()
+            FilterRule.is_enabled == True
+        ).order_by(*get_rule_ordering()).all()
         
         for rule in rules:
             account = db.query(Account).filter(Account.id == rule.account_id).first()
             if not account or not account.api_key:
                 continue
             
+            # 收藏规则优先处理
+            if rule.rule_type == "favorite":
+                if not rule.monitor_favorites:
+                    continue
+                try:
+                    await process_favorite_rule(rule, account, db)
+                except Exception as e:
+                    logger.error(f"处理收藏监控规则 '{rule.name}' 失败: {e}")
+                continue
+
             # 提前检查下载队列限制，避免不必要的网站访问
             if rule.downloader_id and rule.max_downloading:
                 downloader = db.query(Downloader).filter(
@@ -1372,13 +1541,6 @@ def start_scheduler():
         replace_existing=True
     )
 
-    # 收藏监控任务（每5分钟执行一次）
-    scheduler.add_job(
-        monitor_favorite_torrents,
-        IntervalTrigger(seconds=300),  # 5分钟
-        id="monitor_favorites",
-        replace_existing=True
-    )
 
     scheduler.start()
     logger.info(f" 定时任务已启动")
@@ -1386,7 +1548,6 @@ def start_scheduler():
     logger.info(f" 种子检查间隔: {intervals['torrent_check_interval']}秒")
     logger.info(f" 过期检查间隔: {intervals['expired_check_interval']}秒")
     logger.info(f" 状态同步间隔: 60秒")
-    logger.info(f" 收藏监控间隔: 300秒")
     
     # 恢复精准删种任务（服务重启后需要重新调度）
     restore_precise_delete_jobs()

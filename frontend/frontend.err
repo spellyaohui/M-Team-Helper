@@ -1,0 +1,19 @@
+[2m11:44:37[22m [31m[1m[vite][22m[39m [31mInternal server error: Failed to resolve import "@dnd-kit/modifiers" from "src/pages/RulePage.tsx". Does the file exist?[39m
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mD:/Trae/后端/M-TEAM/mteam-helper/frontend/src/pages/RulePage.tsx[39m:23:35
+[33m  21 |  } from "@dnd-kit/sortable";
+  22 |  import { CSS } from "@dnd-kit/utilities";
+  23 |  import { snapCenterToCursor } from "@dnd-kit/modifiers";
+     |                                      ^
+  24 |  import { accountApi, ruleApi, downloaderApi, torrentApi } from "../api";
+  25 |  const { useToken } = theme;[39m
+      at TransformPluginContext._formatLog (file:///D:/Trae/%E5%90%8E%E7%AB%AF/M-TEAM/mteam-helper/frontend/node_modules/vite/dist/node/chunks/config.js:28998:43)
+      at TransformPluginContext.error (file:///D:/Trae/%E5%90%8E%E7%AB%AF/M-TEAM/mteam-helper/frontend/node_modules/vite/dist/node/chunks/config.js:28995:14)
+      at normalizeUrl (file:///D:/Trae/%E5%90%8E%E7%AB%AF/M-TEAM/mteam-helper/frontend/node_modules/vite/dist/node/chunks/config.js:27118:18)
+      at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+      at async file:///D:/Trae/%E5%90%8E%E7%AB%AF/M-TEAM/mteam-helper/frontend/node_modules/vite/dist/node/chunks/config.js:27176:32
+      at async Promise.all (index 7)
+      at async TransformPluginContext.transform (file:///D:/Trae/%E5%90%8E%E7%AB%AF/M-TEAM/mteam-helper/frontend/node_modules/vite/dist/node/chunks/config.js:27144:4)
+      at async EnvironmentPluginContainer.transform (file:///D:/Trae/%E5%90%8E%E7%AB%AF/M-TEAM/mteam-helper/frontend/node_modules/vite/dist/node/chunks/config.js:28796:14)
+      at async loadAndTransform (file:///D:/Trae/%E5%90%8E%E7%AB%AF/M-TEAM/mteam-helper/frontend/node_modules/vite/dist/node/chunks/config.js:22669:26)
+      at async viteTransformMiddleware (file:///D:/Trae/%E5%90%8E%E7%AB%AF/M-TEAM/mteam-helper/frontend/node_modules/vite/dist/node/chunks/config.js:24541:20)

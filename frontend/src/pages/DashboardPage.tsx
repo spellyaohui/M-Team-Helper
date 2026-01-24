@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Row, Col, Card, Table, Tag, Avatar, Spin, message, theme, Tooltip, Progress } from 'antd';
+import { App, Row, Col, Card, Table, Tag, Avatar, Spin, theme, Tooltip, Progress } from 'antd';
 import { 
   UserOutlined, 
   CloudDownloadOutlined, 
@@ -130,6 +130,7 @@ const StatCard = ({ title, value, suffix, icon, color, loading }: any) => {
 };
 
 export default function DashboardPage() {
+  const { message } = App.useApp();
   const { token } = useToken();
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
