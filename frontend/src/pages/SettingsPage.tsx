@@ -19,6 +19,7 @@ import {
   TimePicker,
   Table,
   Popconfirm,
+  theme,
 } from 'antd';
 import {
   ClockCircleOutlined,
@@ -387,6 +388,7 @@ const TimeRangeForm: React.FC<{
 
 const SettingsPage: React.FC = () => {
   const { message } = App.useApp();
+  const { token } = theme.useToken();
   const [refreshForm] = Form.useForm();
   const [autoDeleteForm] = Form.useForm();
   const [loading, setLoading] = useState(false);
@@ -523,7 +525,7 @@ const SettingsPage: React.FC = () => {
   }, []);
 
   return (
-    <div style={{ padding: '24px' }}>
+    <div style={{ height: '100%', overflowY: 'auto', padding: '24px' }}>
       <Title level={2}>
         <SettingOutlined /> 系统设置
       </Title>
@@ -757,8 +759,8 @@ const SettingsPage: React.FC = () => {
                 <Statistic
                   title="运行状态"
                   value={schedulerStatus.running ? '运行中' : '已停止'}
-                  styles={{ content: { 
-                    color: schedulerStatus.running ? '#3f8600' : '#cf1322' 
+                  styles={{ content: {
+                    color: schedulerStatus.running ? token.colorSuccess : token.colorError
                   }}}
                   prefix={schedulerStatus.running ? <CheckCircleOutlined /> : <ExclamationCircleOutlined />}
                 />
@@ -802,8 +804,8 @@ const SettingsPage: React.FC = () => {
                       <Statistic
                         title="自动下载"
                         value={schedulerStatus.schedule_control.current_status.auto_download ? '允许' : '禁用'}
-                        styles={{ content: { 
-                          color: schedulerStatus.schedule_control.current_status.auto_download ? '#3f8600' : '#cf1322' 
+                        styles={{ content: {
+                          color: schedulerStatus.schedule_control.current_status.auto_download ? token.colorSuccess : token.colorError
                         }}}
                         prefix={schedulerStatus.schedule_control.current_status.auto_download ? 
                           <CheckCircleOutlined /> : <ExclamationCircleOutlined />}
@@ -815,8 +817,8 @@ const SettingsPage: React.FC = () => {
                       <Statistic
                         title="过期检查"
                         value={schedulerStatus.schedule_control.current_status.expired_check ? '允许' : '禁用'}
-                        styles={{ content: { 
-                          color: schedulerStatus.schedule_control.current_status.expired_check ? '#3f8600' : '#cf1322' 
+                        styles={{ content: {
+                          color: schedulerStatus.schedule_control.current_status.expired_check ? token.colorSuccess : token.colorError
                         }}}
                         prefix={schedulerStatus.schedule_control.current_status.expired_check ? 
                           <CheckCircleOutlined /> : <ExclamationCircleOutlined />}
@@ -828,8 +830,8 @@ const SettingsPage: React.FC = () => {
                       <Statistic
                         title="账号刷新"
                         value={schedulerStatus.schedule_control.current_status.account_refresh ? '允许' : '禁用'}
-                        styles={{ content: { 
-                          color: schedulerStatus.schedule_control.current_status.account_refresh ? '#3f8600' : '#cf1322' 
+                        styles={{ content: {
+                          color: schedulerStatus.schedule_control.current_status.account_refresh ? token.colorSuccess : token.colorError
                         }}}
                         prefix={schedulerStatus.schedule_control.current_status.account_refresh ? 
                           <CheckCircleOutlined /> : <ExclamationCircleOutlined />}
@@ -979,7 +981,7 @@ const SettingsPage: React.FC = () => {
             <Space>
               <span style={{ fontSize: '16px', fontWeight: 500 }}>动态删种设置</span>
               <Tooltip title="根据容量阈值自动删除种子，防止磁盘空间不足">
-                <InfoCircleOutlined style={{ color: '#1890ff' }} />
+                <InfoCircleOutlined style={{ color: token.colorPrimary }} />
               </Tooltip>
             </Space>
           </Divider>
@@ -1135,7 +1137,7 @@ const SettingsPage: React.FC = () => {
                 <div style={{ marginTop: '4px' }}>
                   <Form.Item noStyle shouldUpdate>
                     {({ getFieldValue }) => (
-                      <Text strong style={{ color: '#1890ff', fontSize: '18px' }}>
+                      <Text strong style={{ color: token.colorPrimary, fontSize: '18px' }}>
                         {(getFieldValue('max_capacity_gb') || 1000) - (getFieldValue('min_capacity_gb') || 800)} GB
                       </Text>
                     )}
@@ -1148,16 +1150,16 @@ const SettingsPage: React.FC = () => {
             </Col>
           </Row>
 
-          <div style={{ 
-            marginTop: 32, 
-            padding: '16px 0', 
-            borderTop: '1px solid #f0f0f0',
+          <div style={{
+            marginTop: 32,
+            padding: '16px 0',
+            borderTop: `1px solid ${token.colorBorderSecondary}`,
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center'
           }}>
             <Space>
-              <CheckCircleOutlined style={{ color: '#52c41a' }} />
+              <CheckCircleOutlined style={{ color: token.colorSuccess }} />
               <Text type="secondary">设置将在保存后立即生效</Text>
             </Space>
             

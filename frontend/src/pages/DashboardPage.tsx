@@ -265,7 +265,7 @@ export default function DashboardPage() {
     },
     areaStyle: () => {
       return {
-        fill: `l(270) 0:#ffffff 0.5:${token.colorPrimary}20 1:${token.colorPrimary}40`,
+        fill: `l(270) 0:${token.colorBgContainer}00 0.5:${token.colorPrimary}20 1:${token.colorPrimary}40`,
       };
     },
   };
@@ -277,13 +277,13 @@ export default function DashboardPage() {
       key: 'username',
       render: (text: string, record: AccountStats) => (
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <Avatar 
-            icon={<UserOutlined />} 
-            size="small" 
-            style={{ backgroundColor: record.is_active ? token.colorPrimary : token.colorTextDisabled }} 
+          <Avatar
+            icon={<UserOutlined />}
+            size="small"
+            style={{ backgroundColor: record.is_active ? token.colorPrimary : token.colorTextDisabled }}
           />
           <div>
-            <div style={{ fontWeight: 500 }}>{text}</div>
+            <div style={{ fontWeight: 500, color: token.colorText }}>{text}</div>
             {!record.is_active && <Tag color="red" style={{ margin: 0, fontSize: 10, lineHeight: '16px' }}>已禁用</Tag>}
           </div>
         </div>
@@ -311,7 +311,7 @@ export default function DashboardPage() {
         let color = token.colorError;
         if (value >= 1) color = token.colorSuccess;
         else if (value >= 0.5) color = token.colorWarning;
-        
+
         return (
           <div style={{ fontWeight: 600, color }}>
             {value.toFixed(2)}
@@ -324,7 +324,7 @@ export default function DashboardPage() {
       dataIndex: 'bonus',
       key: 'bonus',
       render: (value: number) => (
-        <span style={{ color: '#722ed1', fontWeight: 500 }}>
+        <span style={{ color: token.colorWarning, fontWeight: 500 }}>
           {formatNumber(value)}
         </span>
       )
@@ -377,11 +377,11 @@ export default function DashboardPage() {
         {/* 左侧主要内容 */}
         <Col xs={24} lg={16}>
           {/* 下载趋势 */}
-          <Card 
-            title="下载趋势 (近7天)" 
-            className="modern-card" 
+          <Card
+            title={<span style={{ color: token.colorTextHeading }}>下载趋势 (近7天)</span>}
+            className="modern-card"
             variant="borderless"
-            style={{ marginBottom: 24 }}
+            style={{ marginBottom: 24, background: token.colorBgContainer }}
           >
             <div style={{ height: 300 }}>
               <Line {...trendConfig} />
@@ -389,10 +389,11 @@ export default function DashboardPage() {
           </Card>
 
           {/* 账号列表 */}
-          <Card 
-            title="账号状态" 
-            className="modern-card" 
+          <Card
+            title={<span style={{ color: token.colorTextHeading }}>账号状态</span>}
+            className="modern-card"
             variant="borderless"
+            style={{ background: token.colorBgContainer }}
           >
             <Table
               columns={accountColumns}
@@ -407,25 +408,25 @@ export default function DashboardPage() {
         {/* 右侧边栏 */}
         <Col xs={24} lg={8}>
           {/* 下载器状态 */}
-          <Card 
+          <Card
             title={
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: token.colorTextHeading }}>
                 <span>下载器状态</span>
                 {downloadersLoading && <Spin size="small" />}
               </div>
             }
-            className="modern-card" 
+            className="modern-card"
             variant="borderless"
-            style={{ marginBottom: 24 }}
+            style={{ marginBottom: 24, background: token.colorBgContainer }}
             styles={{ body: { padding: '12px 12px' } }}
           >
             <div style={{ maxHeight: 600, overflowY: 'auto' }}>
               {data.downloader_stats.map(downloader => (
-                <Card 
-                  key={downloader.id} 
+                <Card
+                  key={downloader.id}
                   size="small"
                   variant="borderless"
-                  style={{ 
+                  style={{
                     marginBottom: 12,
                     background: token.colorBgLayout,
                     borderRadius: token.borderRadiusLG
@@ -433,16 +434,17 @@ export default function DashboardPage() {
                 >
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <Avatar 
-                        size="small" 
+                      <Avatar
+                        size="small"
                         shape="square"
-                        style={{ 
-                          backgroundColor: downloader.type === 'qbittorrent' ? '#2f6eb5' : '#1e6823' 
+                        style={{
+                          backgroundColor: downloader.type === 'qbittorrent' ? '#2f6eb5' : '#1e6823',
+                          color: '#fff'
                         }}
                       >
                         {downloader.type === 'qbittorrent' ? 'qB' : 'TR'}
                       </Avatar>
-                      <span style={{ fontWeight: 600 }}>{downloader.name}</span>
+                      <span style={{ fontWeight: 600, color: token.colorText }}>{downloader.name}</span>
                     </div>
                     <Tag color={downloader.is_active ? 'success' : 'error'} style={{ margin: 0 }}>
                       {downloader.is_active ? '在线' : '离线'}
@@ -467,16 +469,17 @@ export default function DashboardPage() {
                       </div>
 
                       <div style={{ marginBottom: 8 }}>
-                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
+                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4, color: token.colorTextSecondary }}>
                             <span>剩余空间</span>
                             <span>{formatBytes(downloader.free_space_bytes)}</span>
                          </div>
-                         <Progress 
-                            percent={Math.min(100, Math.max(0, 100 - (downloader.free_space_bytes / (downloader.free_space_bytes + 1000000000000)) * 100))} // 这里只是个模拟，因为不知道总空间
-                            showInfo={false} 
+                         <Progress
+                            percent={Math.min(100, Math.max(0, 100 - (downloader.free_space_bytes / (downloader.free_space_bytes + 1000000000000)) * 100))}
+                            showInfo={false}
                             size="small"
                             status="active"
                             strokeColor={token.colorPrimary}
+                            trailColor={token.colorFillSecondary}
                          />
                       </div>
 
@@ -493,37 +496,39 @@ export default function DashboardPage() {
           </Card>
 
           {/* 最近活动 */}
-          <Card 
-            title="最近活动" 
-            className="modern-card" 
+          <Card
+            title={<span style={{ color: token.colorTextHeading }}>最近活动</span>}
+            className="modern-card"
             variant="borderless"
             styles={{ body: { padding: '0 24px' } }}
+            style={{ background: token.colorBgContainer }}
           >
             <div>
               {data.recent_activities.slice(0, 5).map(activity => (
                 <div key={activity.id} style={{ padding: '16px 0', borderBottom: `1px solid ${token.colorBorderSecondary}` }}>
                   <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-                    <div style={{ 
-                      width: 36, 
-                      height: 36, 
-                      borderRadius: '50%', 
-                      background: activity.status === 'completed' ? '#f6ffed' : '#e6f7ff',
-                      border: `1px solid ${activity.status === 'completed' ? '#b7eb8f' : '#91caff'}`,
+                    <div style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: '50%',
+                      background: activity.status === 'completed' ? token.colorSuccessBg : token.colorPrimaryBg,
+                      border: `1px solid ${activity.status === 'completed' ? token.colorSuccessBorder : token.colorPrimaryBorder}`,
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      color: activity.status === 'completed' ? '#52c41a' : '#1890ff',
+                      color: activity.status === 'completed' ? token.colorSuccess : token.colorPrimary,
                       flexShrink: 0
                     }}>
                       {activity.status === 'completed' ? <CheckCircleOutlined /> : <CloudDownloadOutlined />}
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <Tooltip title={activity.torrent_name}>
-                        <div style={{ 
-                          overflow: 'hidden', 
-                          textOverflow: 'ellipsis', 
+                        <div style={{
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
                           whiteSpace: 'nowrap',
-                          fontSize: 14 
+                          fontSize: 14,
+                          color: token.colorText
                         }}>
                           {activity.torrent_name}
                         </div>

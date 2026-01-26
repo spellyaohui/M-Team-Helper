@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { App, Table, Button, Select, Tag, Popconfirm, Space, Tooltip, Modal, Upload, Form, Input } from 'antd';
+import { App, Table, Button, Select, Tag, Popconfirm, Space, Tooltip, Modal, Upload, Form, Input, theme } from 'antd';
 import { DeleteOutlined, ClearOutlined, SyncOutlined, InfoCircleOutlined, UploadOutlined, InboxOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { accountApi, historyApi, downloaderApi } from '../api';
@@ -57,6 +57,7 @@ const discountMap: Record<string, { text: string; color: string }> = {
 
 export default function HistoryPage() {
   const { message } = App.useApp();
+  const { token } = theme.useToken();
   const [history, setHistory] = useState<History[]>([]);
   const [accounts, setAccounts] = useState<any[]>([]);
   const [downloaders, setDownloaders] = useState<any[]>([]);
@@ -72,6 +73,29 @@ export default function HistoryPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(PAGE_SIZE);
   const [uploadForm] = Form.useForm();
+
+  // 动态计算表格高度
+  const [tableHeight, setTableHeight] = useState(500);
+  const tableContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    // 使用 ResizeObserver 监听容器高度变化
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        // 减去表头高度 (~55px) 和分页器高度 (~64px) 及预留缓冲
+        const height = entry.contentRect.height - 130;
+        setTableHeight(Math.max(200, height));
+      }
+    });
+
+    if (tableContainerRef.current) {
+      resizeObserver.observe(tableContainerRef.current);
+    }
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, []);
 
   useEffect(() => {
     accountApi.list().then(res => setAccounts(res.data));
@@ -383,7 +407,7 @@ export default function HistoryPage() {
         const endTime = dayjs(v);
         const isExpired = endTime.isBefore(dayjs());
         return (
-          <span style={{ color: isExpired ? '#ff4d4f' : '#52c41a' }}>
+          <span style={{ color: isExpired ? token.colorError : token.colorSuccess }}>
             {endTime.format('MM-DD HH:mm')}
             {isExpired ? ' (已过期)' : ''}
           </span>
@@ -432,44 +456,44 @@ export default function HistoryPage() {
   ];
 
   return (
-    <>
-      <div style={{ marginBottom: 16, display: 'flex', gap: 16, alignItems: 'center' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', flex: 1, minHeight: 0 }}>
+      <div style={{ marginBottom: 16, display: 'flex', gap: 16, alignItems: 'center', flexShrink: 0 }}>
         <Select
           style={{ width: 150 }}
           placeholder="全部账号"
           allowClear
           value={accountId}
-      onChange={(v) => { setAccountId(v); setPage(1); fetchHistory(1, v, pageSize); }}
+          onChange={(v) => { setAccountId(v); setPage(1); fetchHistory(1, v, pageSize); }}
           options={accounts.map(a => ({ value: a.id, label: a.username }))}
         />
-        
+
         <Space>
           <Tooltip title="从下载器导入新种子并同步状态">
-            <Button 
-              icon={<SyncOutlined />} 
+            <Button
+              icon={<SyncOutlined />}
               loading={syncing}
               onClick={handleSyncStatus}
             >
               同步状态
             </Button>
           </Tooltip>
-          
+
           <Tooltip title="上传种子文件到下载器">
-            <Button 
-              icon={<UploadOutlined />} 
+            <Button
+              icon={<UploadOutlined />}
               onClick={() => setUploadModalVisible(true)}
             >
               上传种子
             </Button>
           </Tooltip>
-          
-          <Popconfirm 
-            title="确定清空已删除的记录？" 
+
+          <Popconfirm
+            title="确定清空已删除的记录？"
             onConfirm={handleClearDeleted}
             getPopupContainer={() => document.body}
           >
             <Tooltip title="清空下载器中已删除的种子记录">
-              <Button 
+              <Button
                 icon={<ClearOutlined />}
                 loading={clearingDeleted}
               >
@@ -477,55 +501,55 @@ export default function HistoryPage() {
               </Button>
             </Tooltip>
           </Popconfirm>
-          
-          <Popconfirm 
-            title="确定清空所有记录？" 
+
+          <Popconfirm
+            title="确定清空所有记录？"
             onConfirm={handleClear}
             getPopupContainer={() => document.body}
           >
             <Button danger icon={<ClearOutlined />}>清空历史</Button>
           </Popconfirm>
         </Space>
-        
-        <div style={{ marginLeft: 'auto', color: '#666', fontSize: '12px' }}>
+
+        <div style={{ marginLeft: 'auto', color: token.colorTextSecondary, fontSize: '12px' }}>
           <InfoCircleOutlined style={{ marginRight: 4 }} />
           状态说明：下载中 → 已完成 → 做种中 / 已删除
         </div>
       </div>
-      
-      <Table
-        virtual
-        scroll={{ y: 600, x: 1200 }}
-        columns={columns}
-        dataSource={history}
-        rowKey="id"
-        loading={loading}
-        style={{ position: 'relative', zIndex: 1 }}
-        pagination={{
-          current: page,
-          total,
-          pageSize,
-          showSizeChanger: true,
-          showQuickJumper: true,
-          showTotal: (total, range) => `第 ${range[0]}-${range[1]} 条，共 ${total} 条`,
-          pageSizeOptions: ['20', '50', '100', '200'],
-          onChange: (p, size) => { 
-            if (p !== page || size !== pageSize) {
-              setPage(p); 
+
+      <div ref={tableContainerRef} style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+        <Table
+          virtual
+          scroll={{ y: tableHeight, x: 1200 }}
+          columns={columns}
+          dataSource={history}
+          rowKey="id"
+          loading={loading}
+          style={{ height: '100%' }}
+          pagination={{
+            current: page,
+            total,
+            pageSize,
+            showSizeChanger: true,
+            showQuickJumper: true,
+            showTotal: (total, range) => `第 ${range[0]}-${range[1]} 条，共 ${total} 条`,
+            pageSizeOptions: ['20', '50', '100', '200'],
+            onChange: (p, size) => {
+              if (p !== page || size !== pageSize) {
+                setPage(p);
+                setPageSize(size);
+                fetchHistory(p, accountId, size);
+              }
+            },
+            onShowSizeChange: (_, size) => {
+              setPage(1);
               setPageSize(size);
-              fetchHistory(p, accountId, size);
-              window.scrollTo({ top: 0, behavior: 'smooth' });
+              fetchHistory(1, accountId, size);
             }
-          },
-          onShowSizeChange: (_, size) => {
-            setPage(1);
-            setPageSize(size);
-            fetchHistory(1, accountId, size);
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-          }
-        }}
-      />
-      
+          }}
+        />
+      </div>
+
       {/* 上传种子模态框 */}
       <Modal
         title="上传种子文件"
@@ -628,13 +652,13 @@ export default function HistoryPage() {
           </Form.Item>
         </Form>
         
-        <div style={{ color: '#666', fontSize: '12px', marginTop: 16 }}>
+        <div style={{ color: token.colorTextSecondary, fontSize: '12px', marginTop: 16 }}>
           <InfoCircleOutlined style={{ marginRight: 4 }} />
           上传的种子文件会自动添加到选择的下载器，并创建下载历史记录。
           如果关联了M-Team账号，系统会自动查询种子的促销信息。
           可以指定标签来更好地管理种子，系统会自动创建不存在的标签。
         </div>
       </Modal>
-    </>
+    </div>
   );
 }

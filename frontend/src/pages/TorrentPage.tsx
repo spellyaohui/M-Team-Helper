@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { App, Table, Button, Select, Input, Tag, Form, InputNumber, Card, Row, Col, theme, Tooltip, Modal, Space } from 'antd';
 import { SearchOutlined, DownloadOutlined, CloudDownloadOutlined, FileTextOutlined, SendOutlined } from '@ant-design/icons';
 import { accountApi, torrentApi, downloaderApi } from '../api';
@@ -53,7 +53,30 @@ export default function TorrentPage() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [form] = Form.useForm();
-  
+
+  // 动态计算表格高度
+  const [tableHeight, setTableHeight] = useState(500);
+  const tableContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    // 使用 ResizeObserver 监听容器高度变化
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        // 减去表头高度 (~55px) 和分页器高度 (~64px) 及预留缓冲
+        const height = entry.contentRect.height - 130;
+        setTableHeight(Math.max(200, height));
+      }
+    });
+
+    if (tableContainerRef.current) {
+      resizeObserver.observe(tableContainerRef.current);
+    }
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, []);
+
   // 批量选择和推送相关状态
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [downloaders, setDownloaders] = useState<Downloader[]>([]);
@@ -202,16 +225,16 @@ export default function TorrentPage() {
   };
 
   const columns = [
-    { 
-      title: '种子名称', 
-      dataIndex: 'name', 
+    {
+      title: '种子名称',
+      dataIndex: 'name',
       key: 'name',
       render: (v: string, r: Torrent) => (
-        <div style={{ maxWidth: 400 }}>
+        <div>
           <Tooltip title={v}>
-            <div style={{ 
-              fontWeight: 500, 
-              color: token.colorPrimary, 
+            <div style={{
+              fontWeight: 500,
+              color: token.colorPrimary,
               marginBottom: 4,
               overflow: 'hidden',
               textOverflow: 'ellipsis',
@@ -319,10 +342,12 @@ export default function TorrentPage() {
   const rowSelection = {
     selectedRowKeys,
     onChange: (keys: React.Key[]) => setSelectedRowKeys(keys),
+    // virtual + tableLayout=fixed 时，未指定宽度会导致勾选列被均分到大量剩余空间
+    columnWidth: 48,
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24, height: '100%' }}>
       <Card variant="borderless" className="modern-card">
         <Form 
           form={form} 
@@ -375,10 +400,11 @@ export default function TorrentPage() {
         </Form>
       </Card>
 
-      <Card 
+      <Card
         variant="borderless"
-        className="modern-card" 
-        styles={{ body: { padding: 0 } }}
+        className="modern-card"
+        style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}
+        styles={{ body: { padding: 0, flex: 1, overflow: 'hidden' } }}
         title={
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <CloudDownloadOutlined style={{ color: token.colorPrimary }} />
@@ -398,22 +424,27 @@ export default function TorrentPage() {
           )
         }
       >
-        <Table
-          columns={columns}
-          dataSource={torrents}
-          rowKey="id"
-          loading={loading}
-          rowSelection={rowSelection}
-          pagination={{
-            current: page,
-            total,
-            pageSize: 20,
-            showSizeChanger: false,
-            showQuickJumper: true,
-            showTotal: (total) => `共 ${total} 条`,
-            onChange: (p) => handleSearch({ page: p })
-          }}
-        />
+        <div ref={tableContainerRef} style={{ height: '100%' }}>
+          <Table
+            virtual
+            tableLayout="fixed"
+            scroll={{ y: tableHeight }}
+            columns={columns}
+            dataSource={torrents}
+            rowKey="id"
+            loading={loading}
+            rowSelection={rowSelection}
+            pagination={{
+              current: page,
+              total,
+              pageSize: 20,
+              showSizeChanger: false,
+              showQuickJumper: true,
+              showTotal: (total) => `共 ${total} 条`,
+              onChange: (p) => handleSearch({ page: p })
+            }}
+          />
+        </div>
       </Card>
 
       {/* 推送到下载器弹窗 */}

@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { App, Table, Button, Modal, Form, Input, Select, InputNumber, Space, Tag, Popconfirm, Switch } from 'antd';
+import { useState, useEffect, useRef } from 'react';
+import { App, Table, Button, Modal, Form, Input, Select, InputNumber, Space, Tag, Popconfirm, Switch, Card } from 'antd';
 import { PlusOutlined, ApiOutlined, DeleteOutlined } from '@ant-design/icons';
 import { downloaderApi } from '../api';
 
@@ -21,6 +21,29 @@ export default function DownloaderPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [testing, setTesting] = useState<number | null>(null);
   const [form] = Form.useForm();
+
+  // 动态计算表格高度
+  const [tableHeight, setTableHeight] = useState(500);
+  const tableContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    // 使用 ResizeObserver 监听容器高度变化
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        // 减去表头高度 (~55px) 和分页器高度 (~64px) 及预留缓冲
+        const height = entry.contentRect.height - 80;
+        setTableHeight(Math.max(200, height));
+      }
+    });
+
+    if (tableContainerRef.current) {
+      resizeObserver.observe(tableContainerRef.current);
+    }
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, []);
 
   const fetchDownloaders = async () => {
     setLoading(true);
@@ -115,13 +138,31 @@ export default function DownloaderPage() {
   ];
 
   return (
-    <>
-      <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalOpen(true)} style={{ marginBottom: 16 }}>
-        添加下载器
-      </Button>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <Card
+        variant="borderless"
+        className="modern-card"
+        style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}
+        styles={{ body: { padding: 0, flex: 1, overflow: 'hidden' } }}
+        title="下载器列表"
+        extra={
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalOpen(true)}>
+            添加下载器
+          </Button>
+        }
+      >
+        <div ref={tableContainerRef} style={{ height: '100%' }}>
+          <Table
+            columns={columns}
+            dataSource={downloaders}
+            rowKey="id"
+            loading={loading}
+            scroll={{ y: tableHeight }}
+            pagination={false}
+          />
+        </div>
+      </Card>
 
-      <Table columns={columns} dataSource={downloaders} rowKey="id" loading={loading} />
-      
       {/* 添加下载器弹窗 */}
       <Modal title="添加下载器" open={modalOpen} onCancel={() => setModalOpen(false)} onOk={() => form.submit()}>
         <Form form={form} layout="vertical" onFinish={handleAdd}>
@@ -151,6 +192,6 @@ export default function DownloaderPage() {
           </Form.Item>
         </Form>
       </Modal>
-    </>
+    </div>
   );
 }

@@ -5,6 +5,10 @@
 }
 
 html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -26,6 +30,7 @@ body {
 
 #root {
   min-height: 100vh;
+  height: 100%;
 }
 
 /* 滚动条美化 */

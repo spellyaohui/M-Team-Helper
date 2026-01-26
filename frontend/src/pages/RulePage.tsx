@@ -1,4 +1,4 @@
-import { useState, useEffect, createContext, useContext, type HTMLAttributes, type CSSProperties } from 'react';
+import { useState, useEffect, useRef, createContext, useContext, type HTMLAttributes, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { App, Table, Button, Modal, Form, Input, Switch, InputNumber, Select, Space, Tag, Popconfirm, Checkbox, Card, theme, Row, Col, Spin } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, FilterOutlined, MenuOutlined } from '@ant-design/icons';
@@ -124,6 +124,29 @@ export default function RulePage() {
   const [sortSaving, setSortSaving] = useState(false);
   const [activeId, setActiveId] = useState<number | null>(null);
   const [form] = Form.useForm();
+
+  // 动态计算表格高度
+  const [tableHeight, setTableHeight] = useState(500);
+  const tableContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    // 使用 ResizeObserver 监听容器高度变化
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        // 减去表头高度 (~55px) 和分页器高度 (~64px) 及预留缓冲
+        const height = entry.contentRect.height - 130;
+        setTableHeight(Math.max(200, height));
+      }
+    });
+
+    if (tableContainerRef.current) {
+      resizeObserver.observe(tableContainerRef.current);
+    }
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, []);
 
   // 监听下载器选择变化，获取对应的标签列表
   const selectedDownloaderId = Form.useWatch('downloader_id', form);
@@ -345,7 +368,7 @@ export default function RulePage() {
     const newIndex = rules.findIndex(item => item.id === over.id);
     if (oldIndex < 0 || newIndex < 0) return;
 
-    const reordered = arrayMove(rules, oldIndex, newIndex).map((rule, index) => ({
+    const reordered = arrayMove(rules, oldIndex, newIndex).map((rule: Rule, index: number) => ({
       ...rule,
       sort_order: index + 1,
     }));
@@ -355,8 +378,8 @@ export default function RulePage() {
 
     try {
       const updates = reordered
-        .filter(r => oldOrderMap.get(r.id) !== r.sort_order)
-        .map(r => ruleApi.update(r.id, buildRulePayload(r, { sort_order: r.sort_order })));
+        .filter((r: Rule) => oldOrderMap.get(r.id) !== r.sort_order)
+        .map((r: Rule) => ruleApi.update(r.id, buildRulePayload(r, { sort_order: r.sort_order })));
       if (updates.length > 0) {
         setSortSaving(true);
         message.loading({ content: '正在保存排序...', key: 'rule-sort', duration: 0 });
@@ -449,84 +472,87 @@ export default function RulePage() {
   ];
 
   return (
-    <>
-      <Card 
-         variant="borderless"
-         className="modern-card rule-card" 
-         style={{ overflow: 'visible' }}
-         title={
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <Card
+        variant="borderless"
+        className="modern-card rule-card"
+        style={{ overflow: 'visible', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}
+        styles={{ body: { padding: 0, overflow: 'hidden', flex: 1 } }}
+        title={
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <FilterOutlined style={{ color: token.colorSuccess }} />
                 <span>自动下载规则</span>
             </div>
          }
          extra={
-             <Button type="primary" icon={<PlusOutlined />} onClick={() => { 
-                setEditingRule(null); 
+             <Button type="primary" icon={<PlusOutlined />} onClick={() => {
+                setEditingRule(null);
                 setEnableCategoryFilter(false);
-                form.resetFields(); 
-                setModalOpen(true); 
+                form.resetFields();
+                setModalOpen(true);
               }}>
                 添加规则
               </Button>
          }
-         styles={{ body: { padding: 0, overflow: 'visible' } }}
       >
-        <Spin spinning={sortSaving} size="small" tip="保存中...">
-          <DndContext
-            sensors={sensors}
-            collisionDetection={closestCenter}
-            onDragStart={handleDragStart}
-            onDragEnd={handleDragEnd}
-            onDragCancel={handleDragCancel}
-          >
-            <SortableContext items={rules.map(r => r.id)} strategy={verticalListSortingStrategy}>
-              <Table 
-                columns={columns} 
-                dataSource={rules} 
-                rowKey="id"
-                className="rule-sort-table"
-                components={{ body: { row: DraggableRow } }}
-                loading={loading} 
-                pagination={{ pageSize: 10 }}
-              />
-            </SortableContext>
-            {createPortal(
-              <DragOverlay zIndex={9999} modifiers={[snapCenterToCursor]}>
-                {activeRule ? (
-                  <div style={{
-                    padding: 12,
-                    background: token.colorBgElevated,
-                    border: `1px solid ${token.colorBorderSecondary}`,
-                    borderRadius: 8,
-                    boxShadow: token.boxShadowSecondary,
-                    minWidth: 280,
-                    maxWidth: 420,
-                    transform: 'translate(80px, 0)',
-                    pointerEvents: 'none',
-                  }}>
-                    <div style={{ fontWeight: 600, marginBottom: 8 }}>{activeRule.name}</div>
-                    <Space wrap size={[4, 4]}>
-                      {activeRule.rule_type === 'favorite' && <Tag color="gold" variant="filled">收藏监控</Tag>}
-                      <Tag color={activeRule.mode === 'adult' ? 'magenta' : 'blue'} variant="filled">
-                        {activeRule.mode === 'adult' ? '成人' : '普通'}
-                      </Tag>
-                      {activeRule.free_only && <Tag color="green" variant="filled">免费</Tag>}
-                      {activeRule.max_publish_hours && <Tag color="cyan" variant="filled">≤{activeRule.max_publish_hours}h</Tag>}
-                      {activeRule.keywords && <Tag variant="filled" icon={<FilterOutlined />}>{activeRule.keywords}</Tag>}
-                      {activeRule.tags && activeRule.tags.length > 0 && (
-                        <Tag color="purple" variant="filled">标签: {activeRule.tags.join(', ')}</Tag>
-                      )}
-                    </Space>
-                  </div>
-                ) : null}
-              </DragOverlay>,
-              document.body
-            )}
-          </DndContext>
-        </Spin>
+        <div ref={tableContainerRef} style={{ height: '100%' }}>
+          <Spin spinning={sortSaving} size="small" tip="保存中...">
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragStart={handleDragStart}
+              onDragEnd={handleDragEnd}
+              onDragCancel={handleDragCancel}
+            >
+              <SortableContext items={rules.map(r => r.id)} strategy={verticalListSortingStrategy}>
+                <Table
+                  columns={columns}
+                  dataSource={rules}
+                  rowKey="id"
+                  className="rule-sort-table"
+                  components={{ body: { row: DraggableRow } }}
+                  loading={loading}
+                  pagination={{ pageSize: 10 }}
+                  scroll={{ y: tableHeight }}
+                />
+              </SortableContext>
+              {createPortal(
+                <DragOverlay zIndex={9999} modifiers={[snapCenterToCursor]}>
+                  {activeRule ? (
+                    <div style={{
+                      padding: 12,
+                      background: token.colorBgElevated,
+                      border: `1px solid ${token.colorBorderSecondary}`,
+                      borderRadius: 8,
+                      boxShadow: token.boxShadowSecondary,
+                      minWidth: 280,
+                      maxWidth: 420,
+                      transform: 'translate(80px, 0)',
+                      pointerEvents: 'none',
+                    }}>
+                      <div style={{ fontWeight: 600, marginBottom: 8 }}>{activeRule.name}</div>
+                      <Space wrap size={[4, 4]}>
+                        {activeRule.rule_type === 'favorite' && <Tag color="gold" variant="filled">收藏监控</Tag>}
+                        <Tag color={activeRule.mode === 'adult' ? 'magenta' : 'blue'} variant="filled">
+                          {activeRule.mode === 'adult' ? '成人' : '普通'}
+                        </Tag>
+                        {activeRule.free_only && <Tag color="green" variant="filled">免费</Tag>}
+                        {activeRule.max_publish_hours && <Tag color="cyan" variant="filled">≤{activeRule.max_publish_hours}h</Tag>}
+                        {activeRule.keywords && <Tag variant="filled" icon={<FilterOutlined />}>{activeRule.keywords}</Tag>}
+                        {activeRule.tags && activeRule.tags.length > 0 && (
+                          <Tag color="purple" variant="filled">标签: {activeRule.tags.join(', ')}</Tag>
+                        )}
+                      </Space>
+                    </div>
+                  ) : null}
+                </DragOverlay>,
+                document.body
+              )}
+            </DndContext>
+          </Spin>
+        </div>
       </Card>
-      
+
       <Modal 
         title={editingRule ? '编辑规则' : '添加规则'} 
         open={modalOpen} 
@@ -736,6 +762,6 @@ export default function RulePage() {
           </Form.Item>
         </Form>
       </Modal>
-    </>
+    </div>
   );
 }
