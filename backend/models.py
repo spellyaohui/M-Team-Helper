@@ -61,6 +61,8 @@ class FilterRule(Base):
     max_size = Column(Float, nullable=True)  # 最大大小 (GB)
     min_seeders = Column(Integer, nullable=True)  # 最小做种数
     max_seeders = Column(Integer, nullable=True)  # 最大做种数
+    min_leechers = Column(Integer, nullable=True)  # 最小下载用户数
+    max_leechers = Column(Integer, nullable=True)  # 最大下载用户数
     categories = Column(JSON, nullable=True)  # 分类列表
     keywords = Column(String(500), nullable=True)  # 关键词（逗号分隔）
     exclude_keywords = Column(String(500), nullable=True)  # 排除关键词

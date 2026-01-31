@@ -39,6 +39,8 @@ interface Rule {
   max_size: number | null;
   min_seeders: number | null;
   max_seeders: number | null;
+  min_leechers: number | null;
+  max_leechers: number | null;
   categories: string[] | null;
   keywords: string | null;
   exclude_keywords: string | null;
@@ -337,6 +339,8 @@ export default function RulePage() {
       max_size: merged.max_size,
       min_seeders: merged.min_seeders,
       max_seeders: merged.max_seeders,
+      min_leechers: merged.min_leechers,
+      max_leechers: merged.max_leechers,
       categories: merged.categories,
       keywords: merged.keywords,
       exclude_keywords: merged.exclude_keywords,
@@ -433,6 +437,10 @@ export default function RulePage() {
           {r.free_only && <Tag color="green" variant="filled">免费</Tag>}
           {r.min_size && <Tag variant="filled">≥{r.min_size}GB</Tag>}
           {r.max_size && <Tag variant="filled">≤{r.max_size}GB</Tag>}
+          {r.min_seeders && <Tag color="purple" variant="filled">做种≥{r.min_seeders}</Tag>}
+          {r.max_seeders && <Tag color="purple" variant="filled">做种≤{r.max_seeders}</Tag>}
+          {r.min_leechers && <Tag color="orange" variant="filled">下载≥{r.min_leechers}</Tag>}
+          {r.max_leechers && <Tag color="orange" variant="filled">下载≤{r.max_leechers}</Tag>}
           {r.max_publish_hours && <Tag color="cyan" variant="filled">≤{r.max_publish_hours}h</Tag>}
           {r.keywords && <Tag variant="filled" icon={<FilterOutlined />}>{r.keywords}</Tag>}
           {r.categories && r.categories.length > 0 && (
@@ -648,6 +656,19 @@ export default function RulePage() {
              </Col>
              <Col span={6}>
                 <Form.Item name="max_seeders" label="最大做种">
+                   <InputNumber min={0} style={{ width: '100%' }} />
+                </Form.Item>
+             </Col>
+          </Row>
+          
+          <Row gutter={16}>
+             <Col span={6}>
+                <Form.Item name="min_leechers" label="最小下载用户">
+                   <InputNumber min={0} style={{ width: '100%' }} />
+                </Form.Item>
+             </Col>
+             <Col span={6}>
+                <Form.Item name="max_leechers" label="最大下载用户">
                    <InputNumber min={0} style={{ width: '100%' }} />
                 </Form.Item>
              </Col>

@@ -22,6 +22,8 @@ class RuleCreate(BaseModel):
     max_size: Optional[float] = None  # GB
     min_seeders: Optional[int] = None
     max_seeders: Optional[int] = None
+    min_leechers: Optional[int] = None
+    max_leechers: Optional[int] = None
     categories: Optional[List[str]] = None
     keywords: Optional[str] = None
     exclude_keywords: Optional[str] = None
@@ -47,6 +49,8 @@ class RuleResponse(BaseModel):
     max_size: Optional[float]
     min_seeders: Optional[int]
     max_seeders: Optional[int]
+    min_leechers: Optional[int]
+    max_leechers: Optional[int]
     categories: Optional[List[str]]
     keywords: Optional[str]
     exclude_keywords: Optional[str]
@@ -109,6 +113,8 @@ async def create_rule(rule: RuleCreate, db: Session = Depends(get_db)):
         max_size=rule.max_size,
         min_seeders=rule.min_seeders,
         max_seeders=rule.max_seeders,
+        min_leechers=rule.min_leechers,
+        max_leechers=rule.max_leechers,
         categories=rule.categories,
         keywords=rule.keywords,
         exclude_keywords=rule.exclude_keywords,
@@ -216,6 +222,17 @@ def match_torrent(torrent: dict, rule: FilterRule, debug: bool = False) -> bool:
     if rule.max_seeders and seeders > rule.max_seeders:
         if debug:
             print(f"  不匹配: 做种数太多 ({seeders} > {rule.max_seeders})")
+        return False
+    
+    # 下载用户数检查
+    leechers = torrent.get("leechers", 0)
+    if rule.min_leechers and leechers < rule.min_leechers:
+        if debug:
+            print(f"  不匹配: 下载用户数太少 ({leechers} < {rule.min_leechers})")
+        return False
+    if rule.max_leechers and leechers > rule.max_leechers:
+        if debug:
+            print(f"  不匹配: 下载用户数太多 ({leechers} > {rule.max_leechers})")
         return False
     
     # 发布时间检查
