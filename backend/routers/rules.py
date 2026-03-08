@@ -4,6 +4,7 @@ from sqlalchemy import func
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
+import json
 
 from database import get_db
 from models import FilterRule, Account, Downloader
@@ -266,10 +267,27 @@ def match_torrent(torrent: dict, rule: FilterRule, debug: bool = False) -> bool:
                     print(f"  警告: 解析发布时间失败: {e}")
     
     # 分类检查（处理 'null' 字符串和空列表的情况）
+    normalized_rule_categories = []
     if rule.categories and rule.categories != 'null' and rule.categories != ['null']:
-        if torrent.get("category") not in rule.categories:
+        raw_categories = rule.categories
+        if isinstance(raw_categories, str):
+            try:
+                parsed_categories = json.loads(raw_categories)
+                if isinstance(parsed_categories, list):
+                    raw_categories = parsed_categories
+                else:
+                    raw_categories = [raw_categories]
+            except Exception:
+                raw_categories = [raw_categories]
+
+        if isinstance(raw_categories, list):
+            normalized_rule_categories = [str(category_id) for category_id in raw_categories if category_id is not None and str(category_id) != 'null']
+
+    if normalized_rule_categories:
+        torrent_category = torrent.get("category")
+        if str(torrent_category) not in normalized_rule_categories:
             if debug:
-                print(f"  不匹配: 分类不符 ({torrent.get('category')} not in {rule.categories})")
+                print(f"  不匹配: 分类不符 ({torrent_category} not in {normalized_rule_categories})")
             return False
     
     # 关键词检查

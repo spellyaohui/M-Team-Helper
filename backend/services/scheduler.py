@@ -20,6 +20,10 @@ scheduler = AsyncIOScheduler()
 # 到期前提前删除的时间（秒）
 EXPIRE_DELETE_ADVANCE_SECONDS = 300  # 5分钟
 
+# 自动规则搜索分页配置
+AUTO_RULE_SEARCH_PAGE_SIZE = 50
+AUTO_RULE_MAX_PAGES = 5
+
 # 记录任务上次执行时间
 last_execution_times = {}
 
@@ -592,22 +596,51 @@ async def auto_download_torrents():
                     discount = "FREE"
                 elif rule.double_upload:
                     discount = "_2X"
+
+                # 统一分类类型，避免 int/string 混用导致接口筛选异常
+                normalized_categories = None
+                if isinstance(rule.categories, list) and rule.categories:
+                    normalized_categories = [str(category_id) for category_id in rule.categories if category_id is not None]
                 
                 logger.info(f"规则 '{rule.name}' 开始访问网站搜索种子，discount={discount}")
-                result = await api.search_torrents(
-                    page=1,
-                    page_size=50,
-                    mode=rule.mode,  # 使用规则的模式（normal 或 adult）
-                    categories=rule.categories,
-                    discount=discount
-                )
-                
-                if not result["success"]:
-                    logger.warning(f"规则 '{rule.name}' 搜索种子失败: {result.get('message', '未知错误')}")
+                torrents = []
+                for page in range(1, AUTO_RULE_MAX_PAGES + 1):
+                    result = await api.search_torrents(
+                        page=page,
+                        page_size=AUTO_RULE_SEARCH_PAGE_SIZE,
+                        mode=rule.mode,  # 使用规则的模式（normal 或 adult）
+                        categories=normalized_categories,
+                        discount=discount
+                    )
+
+                    if not result["success"]:
+                        logger.warning(f"规则 '{rule.name}' 搜索种子失败（第{page}页）: {result.get('error', '未知错误')}")
+                        break
+
+                    page_data = result.get("data", {})
+                    page_torrents_raw = page_data.get("data", [])
+                    page_torrents = [parse_torrent(t) for t in page_torrents_raw]
+                    torrents.extend(page_torrents)
+
+                    total_count = int(page_data.get("total", 0) or 0)
+                    logger.info(
+                        f"规则 '{rule.name}' 第{page}页获取 {len(page_torrents)} 个种子，"
+                        f"累计 {len(torrents)} 个，总数 {total_count}"
+                    )
+
+                    # 当前页已不足一页，说明已到末页
+                    if len(page_torrents_raw) < AUTO_RULE_SEARCH_PAGE_SIZE:
+                        break
+
+                    # 根据 total 提前终止
+                    if total_count > 0 and page * AUTO_RULE_SEARCH_PAGE_SIZE >= total_count:
+                        break
+
+                if not torrents:
+                    logger.info(f"规则 '{rule.name}' 未获取到可处理的种子")
                     continue
-                
-                torrents = [parse_torrent(t) for t in result["data"].get("data", [])]
-                logger.info(f"规则 '{rule.name}' 获取到 {len(torrents)} 个种子")
+
+                logger.info(f"规则 '{rule.name}' 共获取到 {len(torrents)} 个种子（最多扫描 {AUTO_RULE_MAX_PAGES} 页）")
                 
                 # 批量查询这些种子在 M-Team 网站的下载历史
                 tracker_history = {}
