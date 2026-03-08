@@ -18,15 +18,13 @@ M-Team PT 站自动化助手，支持自动下载免费种子、管理多账号�
   - 删除联动：删除历史记录时同步删除下载器中的种子文件
   - 清空已删除：一键清理下载器中已删除但数据库仍存在的记录
 
-## 近期更新
+## 更新记录
 
-### 2026-03-08
+后续功能说明和重要行为变更统一收录在更新记录目录中，便于集中维护。
 
-- 修复自动规则分类匹配兼容性，支持字符串、JSON 字符串数组和列表等多种分类格式
-- 自动规则搜索从单页改为分页扫描，减少因只查第一页导致的漏种问题
-- 补充分页日志，便于定位搜索结果数量和失败页码
-
-详细说明见：`backend/docs/auto_rule_category_pagination_update.md`
+- 更新记录入口：[backend/docs/README.md](backend/docs/README.md)
+- 最新更新：[自动规则分类匹配与分页搜索更新说明](backend/docs/auto_rule_category_pagination_update.md)
+- 历史更新：[下载用户数限制功能说明](backend/docs/leechers_limit_feature.md)
 
 ## 系统要求
 
