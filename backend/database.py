@@ -54,6 +54,12 @@ def init_db():
     """初始化数据库并执行迁移"""
     Base.metadata.create_all(bind=engine)
     
+    try:
+        from utils.db_migration import auto_migrate_database
+        auto_migrate_database()
+    except Exception as e:
+        print(f"[Migration] 自动迁移检查失败: {e}")
+    
     # 执行数据库迁移
     run_migrations()
 
@@ -66,6 +72,8 @@ def run_migrations():
         ("filter_rules", "sort_order", "INTEGER"),
         ("filter_rules", "min_leechers", "INTEGER"),
         ("filter_rules", "max_leechers", "INTEGER"),
+        ("filter_rules", "download_limit_kbps", "INTEGER"),
+        ("filter_rules", "upload_limit_kbps", "INTEGER"),
     ]
     
     with engine.connect() as conn:

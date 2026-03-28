@@ -77,6 +77,8 @@ class FilterRule(Base):
     save_path = Column(String(500), nullable=True)  # 保存路径
     tags = Column(JSON, nullable=True)  # 下载时添加的标签列表
     max_downloading = Column(Integer, nullable=True)  # 最大同时下载数，超过则暂停添加
+    download_limit_kbps = Column(Integer, nullable=True)
+    upload_limit_kbps = Column(Integer, nullable=True)
     
     created_at = Column(DateTime, default=beijing_now)
     

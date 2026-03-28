@@ -10,7 +10,7 @@ import json
 from database import SessionLocal
 from models import Account, FilterRule, DownloadHistory, Downloader, SystemSettings, beijing_now
 from services.scraper import MTeamAPI, parse_torrent
-from services.downloader import add_torrent, get_torrent_info, delete_torrent, get_downloading_count, get_torrent_info_with_tags, get_all_torrents_with_details, get_downloader_total_size, delete_torrents_by_strategy, delete_torrents_by_free_space, get_disk_space_info, check_torrent_unregistered, get_torrent_trackers
+from services.downloader import add_torrent, get_torrent_info, delete_torrent, get_downloading_count, get_torrent_info_with_tags, get_all_torrents_with_details, get_downloader_total_size, delete_torrents_by_strategy, delete_torrents_by_free_space, get_disk_space_info, check_torrent_unregistered, get_torrent_trackers, normalize_torrent_status
 from routers.rules import match_torrent
 from config import settings, TORRENT_DIR
 from utils.logger import scheduler_logger as logger
@@ -305,7 +305,9 @@ async def process_favorite_rule(rule: FilterRule, account: Account, db: Session)
                     downloader,
                     str(torrent_path),
                     rule.save_path,
-                    rule.tags
+                    rule.tags,
+                    rule.download_limit_kbps,
+                    rule.upload_limit_kbps
                 )
                 status = "pushing" if info_hash else "push_failed"
                 logger.info(f"推送到下载器: {bool(info_hash)}, hash: {info_hash}")
@@ -745,7 +747,9 @@ async def auto_download_torrents():
                                 downloader,
                                 str(torrent_path),
                                 rule.save_path,
-                                rule.tags  # 传入标签
+                                rule.tags,
+                                rule.download_limit_kbps,
+                                rule.upload_limit_kbps
                             )
                             status = "pushing" if info_hash else "push_failed"
                             logger.info(f"推送到下载器: {bool(info_hash)}, hash: {info_hash}")
@@ -935,7 +939,9 @@ async def monitor_favorite_torrents():
                                 downloader,
                                 str(torrent_path),
                                 rule.save_path,
-                                rule.tags
+                                rule.tags,
+                                rule.download_limit_kbps,
+                                rule.upload_limit_kbps
                             )
                             status = "pushing" if info_hash else "push_failed"
                             logger.info(f"推送到下载器: {bool(info_hash)}, hash: {info_hash}")
@@ -1454,55 +1460,34 @@ async def sync_download_status():
                         # 取消精准删种任务
                         cancel_precise_delete(record.id)
                 else:
-                    # 根据种子状态更新记录状态
-                    progress = torrent_info.get("progress", 0)
-                    qb_state = torrent_info.get("state", "")
-                    
-                    new_status = None
-                    
-                    if progress >= 100 or torrent_info.get("is_completed", False):
-                        # 已完成
-                        if qb_state in ["uploading", "stalledUP", "queuedUP", "forcedUP"]:
-                            new_status = "seeding"  # 做种中
+                    new_status = normalize_torrent_status(
+                        torrent_info.get("state", ""),
+                        torrent_info.get("progress", 0),
+                        torrent_info.get("is_completed", False)
+                    )
 
-                            # ⭐ 新增：如果是收藏种子且规则设置了自动取消收藏
-                            if record.is_favorited and record.rule_id and not record.unfavorited_at:
-                                rule = db.query(FilterRule).filter(FilterRule.id == record.rule_id).first()
-                                if rule and rule.rule_type == "favorite" and rule.auto_unfavorite_after_seeding:
-                                    # 获取账号API密钥
-                                    account = db.query(Account).filter(Account.id == record.account_id).first()
-                                    if account and account.api_key:
-                                        try:
-                                            from services.scraper import MTeamAPI
-                                            api = MTeamAPI(account.api_key)
-                                            result = await api.remove_favorite(record.torrent_id)
-                                            if result["success"]:
-                                                record.unfavorited_at = beijing_now()
-                                                logger.info(f"自动取消收藏: {record.torrent_name} (已完成做种)")
-                                            else:
-                                                logger.warning(f"取消收藏失败: {record.torrent_name}, {result.get('message')}")
-                                        except Exception as e:
-                                            logger.error(f"取消收藏异常: {record.torrent_name}, {e}")
-                        else:
-                            new_status = "completed"  # 已完成
-                        # 种子已完成，取消精准删种任务
+                    if new_status == "seeding":
+                        # ⭐ 新增：如果是收藏种子且规则设置了自动取消收藏
+                        if record.is_favorited and record.rule_id and not record.unfavorited_at:
+                            rule = db.query(FilterRule).filter(FilterRule.id == record.rule_id).first()
+                            if rule and rule.rule_type == "favorite" and rule.auto_unfavorite_after_seeding:
+                                # 获取账号API密钥
+                                account = db.query(Account).filter(Account.id == record.account_id).first()
+                                if account and account.api_key:
+                                    try:
+                                        from services.scraper import MTeamAPI
+                                        api = MTeamAPI(account.api_key)
+                                        result = await api.remove_favorite(record.torrent_id)
+                                        if result["success"]:
+                                            record.unfavorited_at = beijing_now()
+                                            logger.info(f"自动取消收藏: {record.torrent_name} (已完成做种)")
+                                        else:
+                                            logger.warning(f"取消收藏失败: {record.torrent_name}, {result.get('message')}")
+                                    except Exception as e:
+                                        logger.error(f"取消收藏异常: {record.torrent_name}, {e}")
+
+                    if new_status in ["completed", "seeding"]:
                         cancel_precise_delete(record.id)
-                    elif progress > 0:
-                        # 下载中
-                        if qb_state in ["downloading", "stalledDL", "queuedDL", "metaDL", "forcedDL"]:
-                            new_status = "downloading"  # 下载中
-                        elif qb_state == "pausedDL":
-                            new_status = "paused"  # 已暂停
-                        else:
-                            new_status = "downloading"
-                    else:
-                        # 未开始或其他状态
-                        if qb_state == "pausedDL":
-                            new_status = "paused"  # 已暂停
-                        elif qb_state in ["queuedDL", "allocating"]:
-                            new_status = "queued"  # 队列中
-                        else:
-                            new_status = "downloading"
                     
                     if new_status and record.status != new_status:
                         record.status = new_status

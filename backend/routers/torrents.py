@@ -8,6 +8,7 @@ from datetime import datetime
 from database import get_db
 from models import Account, DownloadHistory
 from services.scraper import MTeamAPI, parse_torrent
+from services.downloader import get_torrent_info, normalize_torrent_status
 from config import TORRENT_DIR
 
 router = APIRouter(prefix="/torrents", tags=["种子管理"])
@@ -193,6 +194,32 @@ async def push_to_downloader(
     
     if not downloader.is_active:
         raise HTTPException(status_code=400, detail="下载器未激活")
+
+    latest_history = db.query(DownloadHistory).filter(
+        DownloadHistory.account_id == data.account_id,
+        DownloadHistory.torrent_id == data.torrent_id
+    ).order_by(DownloadHistory.created_at.desc(), DownloadHistory.id.desc()).first()
+
+    if latest_history:
+        latest_status = latest_history.status
+        if latest_history.info_hash and latest_history.downloader_id and latest_history.downloader:
+            torrent_info = await get_torrent_info(latest_history.downloader, latest_history.info_hash)
+            if torrent_info is None:
+                latest_status = "deleted"
+            else:
+                latest_status = normalize_torrent_status(
+                    torrent_info.get("state", ""),
+                    torrent_info.get("progress", 0),
+                    torrent_info.get("is_completed", False)
+                )
+
+            if latest_history.status != latest_status:
+                latest_history.status = latest_status
+                db.commit()
+                db.refresh(latest_history)
+
+        if latest_status not in ["deleted", "expired_deleted", "dynamic_deleted", "unregistered_deleted", "failed"]:
+            raise HTTPException(status_code=409, detail=f"种子已在下载器中，当前状态：{latest_status}")
     
     api = MTeamAPI(account.api_key)
     
@@ -281,6 +308,40 @@ async def get_torrent_detail(
     # 添加详情特有字段
     torrent_data["description"] = result["data"].get("descr", "")
     torrent_data["mediainfo"] = result["data"].get("mediainfo", "")
+
+    latest_history = db.query(DownloadHistory).filter(
+        DownloadHistory.account_id == account_id,
+        DownloadHistory.torrent_id == torrent_id
+    ).order_by(DownloadHistory.created_at.desc(), DownloadHistory.id.desc()).first()
+
+    torrent_data["history_id"] = None
+    torrent_data["download_status"] = None
+    torrent_data["downloader_id"] = None
+    torrent_data["info_hash"] = None
+
+    if latest_history:
+        latest_status = latest_history.status
+
+        if latest_history.info_hash and latest_history.downloader_id and latest_history.downloader:
+            torrent_info = await get_torrent_info(latest_history.downloader, latest_history.info_hash)
+            if torrent_info is None:
+                latest_status = "deleted"
+            else:
+                latest_status = normalize_torrent_status(
+                    torrent_info.get("state", ""),
+                    torrent_info.get("progress", 0),
+                    torrent_info.get("is_completed", False)
+                )
+
+            if latest_history.status != latest_status:
+                latest_history.status = latest_status
+                db.commit()
+                db.refresh(latest_history)
+
+        torrent_data["history_id"] = latest_history.id
+        torrent_data["download_status"] = latest_status
+        torrent_data["downloader_id"] = latest_history.downloader_id
+        torrent_data["info_hash"] = latest_history.info_hash
     
     return {"success": True, "data": torrent_data}
 

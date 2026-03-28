@@ -51,6 +51,8 @@ interface Rule {
   save_path: string | null;
   tags: string[] | null;
   max_downloading: number | null;
+  download_limit_kbps: number | null;
+  upload_limit_kbps: number | null;
   sort_order: number | null;
 }
 
@@ -351,6 +353,8 @@ export default function RulePage() {
       save_path: merged.save_path,
       tags: merged.tags,
       max_downloading: merged.max_downloading,
+      download_limit_kbps: merged.download_limit_kbps,
+      upload_limit_kbps: merged.upload_limit_kbps,
       sort_order: merged.sort_order,
     };
   };
@@ -463,6 +467,16 @@ export default function RulePage() {
               {name + limit}
            </span>
         );
+      }
+    },
+    {
+      title: '限速',
+      key: 'speed_limit',
+      render: (_: any, r: Rule) => {
+        const limits: string[] = [];
+        if (r.download_limit_kbps) limits.push(`下行 ${r.download_limit_kbps} KB/s`);
+        if (r.upload_limit_kbps) limits.push(`上行 ${r.upload_limit_kbps} KB/s`);
+        return limits.length > 0 ? limits.join(' / ') : '不限速';
       }
     },
     {
@@ -759,6 +773,19 @@ export default function RulePage() {
              <Col span={12}>
                 <Form.Item name="max_downloading" label="最大同时下载" tooltip="超过此数量时暂停添加新种子">
                    <InputNumber min={1} style={{ width: '100%' }} placeholder="不限制" />
+                </Form.Item>
+             </Col>
+          </Row>
+
+          <Row gutter={16}>
+             <Col span={12}>
+                <Form.Item name="download_limit_kbps" label="下载限速" tooltip="单位 KB/s，不填表示不限速">
+                   <InputNumber min={1} style={{ width: '100%' }} placeholder="不限速" addonAfter="KB/s" />
+                </Form.Item>
+             </Col>
+             <Col span={12}>
+                <Form.Item name="upload_limit_kbps" label="上传限速" tooltip="单位 KB/s，不填表示不限速">
+                   <InputNumber min={1} style={{ width: '100%' }} placeholder="不限速" addonAfter="KB/s" />
                 </Form.Item>
              </Col>
           </Row>

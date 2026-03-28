@@ -8,8 +8,18 @@ import time
 
 from database import get_db
 from models import DownloadHistory, Account, Downloader, FilterRule, beijing_now
-from services.scheduler import check_expired_torrents
-from services.downloader import get_torrent_info_with_tags, add_torrent, get_tags, create_tags
+from services.scheduler import check_expired_torrents, cancel_precise_delete
+from services.downloader import (
+    get_torrent_info,
+    get_torrent_info_with_tags,
+    add_torrent,
+    get_tags,
+    create_tags,
+    pause_torrent,
+    resume_torrent,
+    delete_torrent,
+    normalize_torrent_status,
+)
 from config import TORRENT_DIR
 from utils.cache import cached, cache_key_with_params
 
@@ -49,6 +59,26 @@ class TorrentStatusResponse(BaseModel):
     rule_tags: List[str]
     torrent_tags: List[str]
     should_delete: bool
+
+
+class RemoveTorrentRequest(BaseModel):
+    delete_files: bool = False
+
+
+async def refresh_history_status(record: DownloadHistory, downloader: Downloader) -> str:
+    """根据下载器实时状态刷新历史状态。"""
+    if not record.info_hash:
+        return record.status
+
+    torrent_info = await get_torrent_info(downloader, record.info_hash)
+    if torrent_info is None:
+        return "deleted"
+
+    return normalize_torrent_status(
+        torrent_info.get("state"),
+        torrent_info.get("progress"),
+        torrent_info.get("is_completed", False)
+    )
 
 def get_history_count(db: Session, account_id: Optional[int] = None, status: Optional[str] = None) -> int:
     """获取历史记录总数（带缓存）"""
@@ -438,20 +468,11 @@ async def sync_download_status(
                         continue
                     
                     # 根据种子状态确定记录状态
-                    progress = torrent.get("progress", 0)
-                    state = torrent.get("state", "")
-                    
-                    if progress >= 100:
-                        if state in ["uploading", "stalledUP", "queuedUP", "seeding", "seed_wait"]:
-                            status = "seeding"
-                        else:
-                            status = "completed"
-                    elif state in ["pausedDL", "pausedUP"]:
-                        status = "paused"
-                    elif state in ["queuedDL", "allocating"]:
-                        status = "queued"
-                    else:
-                        status = "downloading"
+                    status = normalize_torrent_status(
+                        torrent.get("state", ""),
+                        torrent.get("progress", 0),
+                        torrent.get("progress", 0) >= 100
+                    )
                     
                     history_record = DownloadHistory(
                         account_id=None,
@@ -526,30 +547,11 @@ async def sync_download_status(
                             record.status = "deleted"
                             updated_count += 1
                     else:
-                        progress = torrent_info.get("progress", 0)
-                        qb_state = torrent_info.get("state", "")
-                        
-                        new_status = None
-                        
-                        if progress >= 100 or torrent_info.get("is_completed", False):
-                            if qb_state in ["uploading", "stalledUP", "queuedUP", "forcedUP"]:
-                                new_status = "seeding"
-                            else:
-                                new_status = "completed"
-                        elif progress > 0:
-                            if qb_state in ["downloading", "stalledDL", "queuedDL", "metaDL", "forcedDL"]:
-                                new_status = "downloading"
-                            elif qb_state == "pausedDL":
-                                new_status = "paused"
-                            else:
-                                new_status = "downloading"
-                        else:
-                            if qb_state == "pausedDL":
-                                new_status = "paused"
-                            elif qb_state in ["queuedDL", "allocating"]:
-                                new_status = "queued"
-                            else:
-                                new_status = "downloading"
+                        new_status = normalize_torrent_status(
+                            torrent_info.get("state", ""),
+                            torrent_info.get("progress", 0),
+                            torrent_info.get("is_completed", False)
+                        )
                         
                         if new_status and record.status != new_status:
                             record.status = new_status
@@ -630,20 +632,11 @@ async def import_from_downloader(
                     continue
                 
                 # 根据种子状态确定记录状态
-                progress = torrent.get("progress", 0)
-                state = torrent.get("state", "")
-                
-                if progress >= 100:
-                    if state in ["uploading", "stalledUP", "queuedUP", "seeding", "seed_wait"]:
-                        status = "seeding"
-                    else:
-                        status = "completed"
-                elif state in ["pausedDL", "pausedUP"]:
-                    status = "paused"
-                elif state in ["queuedDL", "allocating"]:
-                    status = "queued"
-                else:
-                    status = "downloading"
+                status = normalize_torrent_status(
+                    torrent.get("state", ""),
+                    torrent.get("progress", 0),
+                    torrent.get("progress", 0) >= 100
+                )
                 
                 # 创建下载历史记录
                 history_record = DownloadHistory(
@@ -734,8 +727,6 @@ async def clear_deleted_history(db: Session = Depends(get_db)):
 @router.delete("/{history_id}")
 async def delete_history(history_id: int, db: Session = Depends(get_db)):
     """删除下载历史记录，同时删除下载器中的种子"""
-    from services.downloader import delete_torrent
-    
     history = db.query(DownloadHistory).filter(DownloadHistory.id == history_id).first()
     if not history:
         raise HTTPException(status_code=404, detail="记录不存在")
@@ -770,6 +761,102 @@ async def delete_history(history_id: int, db: Session = Depends(get_db)):
         message = "删除成功，种子已从下载器移除" if torrent_deleted else "删除成功，种子在下载器中不存在"
     
     return {"success": True, "message": message, "torrent_deleted": torrent_deleted}
+
+
+@router.post("/{history_id}/pause")
+async def pause_history_torrent(history_id: int, db: Session = Depends(get_db)):
+    """暂停历史记录对应的下载器任务。"""
+    history = db.query(DownloadHistory).filter(DownloadHistory.id == history_id).first()
+    if not history:
+        raise HTTPException(status_code=404, detail="记录不存在")
+
+    if not history.info_hash or not history.downloader_id:
+        raise HTTPException(status_code=400, detail="当前记录缺少下载器任务信息")
+
+    downloader = db.query(Downloader).filter(Downloader.id == history.downloader_id).first()
+    if not downloader:
+        raise HTTPException(status_code=404, detail="下载器不存在")
+
+    success = await pause_torrent(downloader, history.info_hash)
+    if not success:
+        raise HTTPException(status_code=500, detail="暂停失败")
+
+    history.status = await refresh_history_status(history, downloader)
+    db.commit()
+    db.refresh(history)
+
+    return {
+        "success": True,
+        "message": "已暂停任务",
+        "history_id": history.id,
+        "status": history.status,
+    }
+
+
+@router.post("/{history_id}/resume")
+async def resume_history_torrent(history_id: int, db: Session = Depends(get_db)):
+    """恢复历史记录对应的下载器任务。"""
+    history = db.query(DownloadHistory).filter(DownloadHistory.id == history_id).first()
+    if not history:
+        raise HTTPException(status_code=404, detail="记录不存在")
+
+    if not history.info_hash or not history.downloader_id:
+        raise HTTPException(status_code=400, detail="当前记录缺少下载器任务信息")
+
+    downloader = db.query(Downloader).filter(Downloader.id == history.downloader_id).first()
+    if not downloader:
+        raise HTTPException(status_code=404, detail="下载器不存在")
+
+    success = await resume_torrent(downloader, history.info_hash)
+    if not success:
+        raise HTTPException(status_code=500, detail="继续失败")
+
+    history.status = await refresh_history_status(history, downloader)
+    db.commit()
+    db.refresh(history)
+
+    return {
+        "success": True,
+        "message": "已继续任务",
+        "history_id": history.id,
+        "status": history.status,
+    }
+
+
+@router.post("/{history_id}/remove-torrent")
+async def remove_history_torrent(
+    history_id: int,
+    data: RemoveTorrentRequest,
+    db: Session = Depends(get_db)
+):
+    """从下载器移除任务，可选是否删除源文件。"""
+    history = db.query(DownloadHistory).filter(DownloadHistory.id == history_id).first()
+    if not history:
+        raise HTTPException(status_code=404, detail="记录不存在")
+
+    if not history.info_hash or not history.downloader_id:
+        raise HTTPException(status_code=400, detail="当前记录缺少下载器任务信息")
+
+    downloader = db.query(Downloader).filter(Downloader.id == history.downloader_id).first()
+    if not downloader:
+        raise HTTPException(status_code=404, detail="下载器不存在")
+
+    success = await delete_torrent(downloader, history.info_hash, delete_files=data.delete_files)
+    if not success:
+        raise HTTPException(status_code=500, detail="删除任务失败")
+
+    history.status = "deleted"
+    cancel_precise_delete(history.id)
+    db.commit()
+    db.refresh(history)
+
+    return {
+        "success": True,
+        "message": "已从下载器移除任务",
+        "history_id": history.id,
+        "status": history.status,
+        "delete_files": data.delete_files,
+    }
 
 @router.delete("/")
 async def clear_history(

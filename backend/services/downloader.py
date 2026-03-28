@@ -39,6 +39,43 @@ def _get_tr_client(downloader):
     )
 
 
+def normalize_torrent_status(state: Optional[str], progress: Optional[float], is_completed: bool = False) -> str:
+    """将下载器原始状态归一化为业务状态。"""
+    raw_state = str(state or "").strip().lower()
+
+    try:
+        progress_value = float(progress or 0)
+    except (TypeError, ValueError):
+        progress_value = 0.0
+
+    paused_states = {"paused", "pauseddl", "pausedup"}
+    stopped_states = {"stopped", "stoppeddl", "stoppedup"}
+    queued_states = {"queueddl", "allocating", "download pending"}
+    seeding_states = {"uploading", "stalledup", "queuedup", "forcedup", "seeding", "seed_wait"}
+    downloading_states = {
+        "downloading", "stalleddl", "metadl", "forceddl", "checkingdl", "checkingup", "checkingresume"
+    }
+
+    if raw_state in paused_states:
+        return "paused"
+
+    if raw_state in stopped_states:
+        return "pending"
+
+    if is_completed or progress_value >= 100:
+        if raw_state in seeding_states:
+            return "seeding"
+        return "completed"
+
+    if raw_state in queued_states:
+        return "queued"
+
+    if raw_state in downloading_states or progress_value > 0:
+        return "downloading"
+
+    return "pending"
+
+
 def _sync_test_tr_connection(downloader) -> dict:
     """同步测试 Transmission 连接"""
     client = _get_tr_client(downloader)
@@ -65,7 +102,35 @@ async def test_downloader_connection(downloader) -> dict:
         return {"success": False, "message": f"连接失败: {str(e)}"}
 
 
-def _sync_add_tr_torrent(downloader, torrent_content: bytes, save_path: Optional[str] = None) -> Optional[str]:
+def _extract_torrent_info_hash(torrent_content: bytes) -> Optional[str]:
+    import hashlib
+    try:
+        import bencodepy
+        torrent_data = bencodepy.decode(torrent_content)
+        info = torrent_data[b'info']
+        return hashlib.sha1(bencodepy.encode(info)).hexdigest()
+    except Exception:
+        return None
+
+
+def _apply_qb_torrent_limits(client, info_hash: str, download_limit_kbps: Optional[int] = None, upload_limit_kbps: Optional[int] = None) -> None:
+    if not info_hash:
+        return
+
+    if download_limit_kbps:
+        client.torrents_set_download_limit(limit=int(download_limit_kbps) * 1024, torrent_hashes=info_hash)
+
+    if upload_limit_kbps:
+        client.torrents_set_upload_limit(limit=int(upload_limit_kbps) * 1024, torrent_hashes=info_hash)
+
+
+def _sync_add_tr_torrent(
+    downloader,
+    torrent_content: bytes,
+    save_path: Optional[str] = None,
+    download_limit_kbps: Optional[int] = None,
+    upload_limit_kbps: Optional[int] = None
+) -> Optional[str]:
     """同步添加种子到 Transmission
     
     注意：transmission_rpc 的 add_torrent 方法直接接受种子内容（bytes），不需要 base64 编码
@@ -79,10 +144,31 @@ def _sync_add_tr_torrent(downloader, torrent_content: bytes, save_path: Optional
     
     # 直接传入种子内容，transmission_rpc 会自动处理
     result = client.add_torrent(torrent_content, **kwargs)
-    return result.hashString if result else None
+    if not result:
+        return None
+
+    limit_kwargs = {}
+    if download_limit_kbps:
+        limit_kwargs["download_limit"] = int(download_limit_kbps)
+        limit_kwargs["download_limited"] = True
+    if upload_limit_kbps:
+        limit_kwargs["upload_limit"] = int(upload_limit_kbps)
+        limit_kwargs["upload_limited"] = True
+
+    if limit_kwargs:
+        client.change_torrent(ids=[result.hashString], **limit_kwargs)
+
+    return result.hashString
 
 
-async def add_torrent(downloader, torrent_path: str, save_path: Optional[str] = None, tags: Optional[List[str]] = None) -> Optional[str]:
+async def add_torrent(
+    downloader,
+    torrent_path: str,
+    save_path: Optional[str] = None,
+    tags: Optional[List[str]] = None,
+    download_limit_kbps: Optional[int] = None,
+    upload_limit_kbps: Optional[int] = None
+) -> Optional[str]:
     """添加种子到下载器
     
     Args:
@@ -122,21 +208,22 @@ async def add_torrent(downloader, torrent_path: str, save_path: Optional[str] = 
             # 尝试获取刚添加的种子的 hash
             import time
             time.sleep(1)
-            
-            # 从种子文件解析 info_hash
-            import hashlib
-            try:
-                import bencodepy
-                torrent_data = bencodepy.decode(torrent_content)
-                info = torrent_data[b'info']
-                info_hash = hashlib.sha1(bencodepy.encode(info)).hexdigest()
-                return info_hash
-            except:
-                return "unknown"
+
+            info_hash = _extract_torrent_info_hash(torrent_content) or "unknown"
+            if info_hash != "unknown":
+                _apply_qb_torrent_limits(client, info_hash, download_limit_kbps, upload_limit_kbps)
+            return info_hash
         
         elif downloader.type == "transmission":
             # 使用 asyncio.to_thread 包装同步调用
-            return await asyncio.to_thread(_sync_add_tr_torrent, downloader, torrent_content, save_path)
+            return await asyncio.to_thread(
+                _sync_add_tr_torrent,
+                downloader,
+                torrent_content,
+                save_path,
+                download_limit_kbps,
+                upload_limit_kbps
+            )
         
         return None
     
@@ -234,6 +321,60 @@ async def delete_torrent(downloader, info_hash: str, delete_files: bool = True) 
     
     except Exception as e:
         print(f"[Downloader] 删除种子失败: {e}")
+        return False
+
+
+def _sync_pause_tr_torrent(downloader, info_hash: str) -> bool:
+    """同步暂停 Transmission 种子。"""
+    client = _get_tr_client(downloader)
+    client.stop_torrent(ids=[info_hash])
+    print(f"[Downloader] 已暂停种子: {info_hash}")
+    return True
+
+
+async def pause_torrent(downloader, info_hash: str) -> bool:
+    """暂停种子。"""
+    try:
+        if downloader.type == "qbittorrent":
+            client = _get_qb_client(downloader)
+            client.torrents_pause(torrent_hashes=info_hash)
+            print(f"[Downloader] 已暂停种子: {info_hash}")
+            return True
+
+        if downloader.type == "transmission":
+            return await asyncio.to_thread(_sync_pause_tr_torrent, downloader, info_hash)
+
+        return False
+
+    except Exception as e:
+        print(f"[Downloader] 暂停种子失败: {e}")
+        return False
+
+
+def _sync_resume_tr_torrent(downloader, info_hash: str) -> bool:
+    """同步恢复 Transmission 种子。"""
+    client = _get_tr_client(downloader)
+    client.start_torrent(ids=[info_hash])
+    print(f"[Downloader] 已恢复种子: {info_hash}")
+    return True
+
+
+async def resume_torrent(downloader, info_hash: str) -> bool:
+    """恢复种子。"""
+    try:
+        if downloader.type == "qbittorrent":
+            client = _get_qb_client(downloader)
+            client.torrents_resume(torrent_hashes=info_hash)
+            print(f"[Downloader] 已恢复种子: {info_hash}")
+            return True
+
+        if downloader.type == "transmission":
+            return await asyncio.to_thread(_sync_resume_tr_torrent, downloader, info_hash)
+
+        return False
+
+    except Exception as e:
+        print(f"[Downloader] 恢复种子失败: {e}")
         return False
 
 

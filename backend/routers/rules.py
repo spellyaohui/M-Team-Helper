@@ -35,6 +35,8 @@ class RuleCreate(BaseModel):
     save_path: Optional[str] = None
     tags: Optional[List[str]] = None  # 下载时添加的标签
     max_downloading: Optional[int] = None  # 最大同时下载数
+    download_limit_kbps: Optional[int] = None
+    upload_limit_kbps: Optional[int] = None
     sort_order: Optional[int] = None  # 规则排序（数字越小越靠前）
 
 class RuleResponse(BaseModel):
@@ -62,6 +64,8 @@ class RuleResponse(BaseModel):
     save_path: Optional[str]
     tags: Optional[List[str]]
     max_downloading: Optional[int]
+    download_limit_kbps: Optional[int]
+    upload_limit_kbps: Optional[int]
     sort_order: Optional[int]
     created_at: datetime
 
@@ -126,6 +130,8 @@ async def create_rule(rule: RuleCreate, db: Session = Depends(get_db)):
         save_path=rule.save_path,
         tags=rule.tags,
         max_downloading=rule.max_downloading,
+        download_limit_kbps=rule.download_limit_kbps,
+        upload_limit_kbps=rule.upload_limit_kbps,
         sort_order=sort_order
     )
     db.add(db_rule)
