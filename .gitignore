@@ -45,3 +45,4 @@ Thumbs.db
 # 日志
 *.log
 backend/data/logs/
+data/logs/
