@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  transmission:
+    image: linuxserver/transmission:latest
+    container_name: transmission
+    restart: unless-stopped
+    ports:
+      - "9091:9091"      # Web UI
+      - "51413:51413"    # BT 端口 TCP
+      - "51413:51413/udp" # BT 端口 UDP
+    volumes:
+      - ./config:/config
+      - ./downloads:/downloads
+      - ./watch:/watch   # 监控目录，放入种子自动下载
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Asia/Shanghai
+      - USER=admin           # Web UI 用户名
+      - PASS=admin123        # Web UI 密码（请修改）
+      # - TRANSMISSION_WEB_HOME=/flood-for-transmission/  # 可选：使用 Flood UI
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/transmission/web/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3

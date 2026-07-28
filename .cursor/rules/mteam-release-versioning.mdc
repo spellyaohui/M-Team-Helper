@@ -1,0 +1,44 @@
+---
+description: M-Team Helper 统一版本号与多端同步打包（不含移动端 App）
+alwaysApply: true
+---
+
+# 统一版本与同步发布
+
+## 版本基线
+
+- 产品对外版本使用 **2.0.x** 语义（与 GitHub Release `V2.0.x` 一致）。
+- **当前已发布：2.0.8**；此后每次发版从 **2.0.9** 起递增 patch（2.0.10、2.0.11…），**桌面端、网页端、Docker 必须使用同一版本号**。
+- **mteam-helper-Mobile（App / APK）不参与**本条规则，可独立发版。
+- **mteam-helper-Mobile 为私有源码**：目录已在根 `.gitignore` 中整目录屏蔽，**禁止** `git add`、提交或推送到公开仓库。
+
+## 何时必须「一起打包」
+
+凡改动 **mteam-helper**（`backend/` 或 `frontend/`）且需要用户**重新部署/重装**才能生效时，必须在**同一次发版**内完成以下三项，不得只发一端：
+
+| 渠道 | 动作 |
+|------|------|
+| **网页端** | `mteam-helper/frontend` → `npm run build`；产物由后端静态托管（本地/Docker 均依赖该构建） |
+| **桌面端** | `mteam-helper-desktop` → `npm run build` 或 `build.bat`（含前端、PyInstaller 后端、Electron） |
+| **Docker** | 在 `M-TEAM` 根目录构建镜像 `spellyaohui/mteam-helper:<版本>`，更新 compose 与文档中的 tag |
+
+仅文档、仅开发环境热重载、或用户明确只要某一端时，可例外；**默认按上表三端齐发**。
+
+## 发版前须同步修改的版本位点
+
+1. `mteam-helper-desktop/package.json` → `"version"`
+2. `mteam-helper-docker/docker-compose.yml` → `image: spellyaohui/mteam-helper:<版本>`
+3. `mteam-helper-docker/SECURITY-NOTE.md`（若本次有镜像重建/安全加固，更新标签与说明）
+4. GitHub Release：`V2.0.x`，桌面附件命名与历史一致（如 `M-Team.Helper.Setup.<版本>_win_x64.exe`、`MTeam-Helper-Portable-<版本>_win_x64.exe`）
+
+## 推荐顺序
+
+1. 在 `mteam-helper` 完成代码与 `frontend` 生产构建。
+2.  bump 上述版本号至**同一** `2.0.x`。
+3. 并行/顺序：桌面 `dist`、Docker `build` + `push`、GitHub Release 上传 EXE。
+4. Release 说明中写明：Web（随镜像/后端部署）、Windows 桌面、Docker 均为该版本。
+
+## 禁止
+
+- 禁止桌面 2.0.x 与 Docker 镜像 2.0.y（x≠y）长期并存于「最新正式版」。
+- 禁止只推 GitHub EXE 而不更新 Docker tag（或反之），除非用户明确要求单端 hotfix。

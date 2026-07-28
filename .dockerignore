@@ -1,0 +1,30 @@
+.git
+.gitignore
+.DS_Store
+
+# Python venv/cache
+venv/
+.venv/
+**/__pycache__/
+mteam-helper/backend/venv/
+
+# Node
+node_modules/
+mteam-helper/frontend/node_modules/
+
+# Build outputs
+**/dist/
+**/build/
+
+# Data/runtime
+**/data/
+*.db
+*.sqlite
+
+# Env files
+.env
+.env.*
+
+# Logs
+*.log
+logs/

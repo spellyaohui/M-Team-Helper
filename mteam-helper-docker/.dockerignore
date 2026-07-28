@@ -1,0 +1,66 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+ENV/
+env/
+*.egg-info/
+.eggs/
+mteam-helper/backend/venv/
+mteam-helper/backend/__pycache__/
+
+# Node
+node_modules/
+mteam-helper/frontend/node_modules/
+npm-debug.log*
+
+# IDE
+.idea/
+.vscode/
+.kiro/
+*.swp
+*.swo
+
+# 构建产物
+dist/
+build/
+mteam-helper/frontend/dist/
+*.egg
+
+# 数据文件（运行时生成）
+data/
+mteam-helper/backend/data/
+*.db
+*.sqlite
+
+# 环境配置
+.env
+.env.local
+.env.*.local
+mteam-helper/backend/.env
+
+# 日志
+*.log
+logs/
+
+# 测试
+.pytest_cache/
+.coverage
+htmlcov/
+
+# 其他项目目录
+mteam-helper-desktop/
+mteam-helper-docker/
+
+# 其他
+*.md
+LICENSE
+deploy.sh

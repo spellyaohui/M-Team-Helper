@@ -1,0 +1,78 @@
+{
+  "name": "mteam-helper-desktop",
+  "version": "2.0.8",
+  "description": "M-Team Helper 桌面版 - PT站自动化助手",
+  "main": "main.js",
+  "author": "spellyaohui",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "build": "npm run build:backend && npm run build:frontend && npm run build:electron",
+    "build:backend": "node scripts/build-backend.js",
+    "build:frontend": "node scripts/build-frontend.js",
+    "build:electron": "electron-builder",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder"
+  },
+  "dependencies": {
+    "electron-store": "^8.1.0"
+  },
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1",
+    "jimp": "^1.6.0",
+    "sharp": "^0.34.5",
+    "to-ico": "^1.1.5"
+  },
+  "build": {
+    "appId": "com.mteam.helper",
+    "productName": "M-Team Helper",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "frontend/**/*",
+      "backend/**/*",
+      "icon.ico"
+    ],
+    "extraResources": [
+      {
+        "from": "backend-dist",
+        "to": "backend",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "icon.ico",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "M-Team Helper"
+    },
+    "portable": {
+      "artifactName": "MTeam-Helper-Portable-${version}.exe"
+    }
+  }
+}

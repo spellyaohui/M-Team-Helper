@@ -1,0 +1,75 @@
+M-Team Helper Docker 构建说明
+==============================
+
+构建命令需要在上级目录（M-TEAM）下执行！
+
+目录结构：
+M-TEAM/
+├── mteam-helper/           # 主项目
+├── mteam-helper-desktop/   # 桌面版
+└── mteam-helper-docker/    # Docker 文件（当前目录）
+
+
+一、首次构建和推送
+==================
+
+cd D:\Trae\后端\M-TEAM
+
+# 构建镜像
+docker build -t spellyaohui/mteam-helper:latest -t spellyaohui/mteam-helper:1.0 -f mteam-helper-docker/Dockerfile .
+
+# 推送镜像
+docker push spellyaohui/mteam-helper:latest
+docker push spellyaohui/mteam-helper:1.0
+
+
+二、版本更新（保留旧版本）
+==========================
+
+假设当前 latest 是 1.0，要发布 1.1 版本：
+
+# 1. 先给当前 latest 打上旧版本标签（如果之前没打）
+docker pull spellyaohui/mteam-helper:latest
+docker tag spellyaohui/mteam-helper:latest spellyaohui/mteam-helper:1.0
+docker push spellyaohui/mteam-helper:1.0
+
+# 2. 构建新版本镜像（同时打 latest 和新版本号标签）
+cd D:\Trae\后端\M-TEAM
+docker build -t spellyaohui/mteam-helper:latest -t spellyaohui/mteam-helper:1.1 -f mteam-helper-docker/Dockerfile .
+
+# 3. 推送新镜像
+docker push spellyaohui/mteam-helper:latest
+docker push spellyaohui/mteam-helper:1.1
+
+这样 Docker Hub 上就会有：
+- 1.0    - 旧版本
+- 1.1    - 新版本
+- latest - 指向最新版本 (1.1)
+
+
+三、快速更新脚本（Windows）
+===========================
+
+# 在 M-TEAM 目录下执行，参数为新版本号
+# 例如发布 1.2 版本：
+
+cd D:\Trae\后端\M-TEAM
+docker build -t spellyaohui/mteam-helper:latest -t spellyaohui/mteam-helper:1.2 -f mteam-helper-docker/Dockerfile .
+docker push spellyaohui/mteam-helper:latest
+docker push spellyaohui/mteam-helper:1.2
+
+
+四、版本历史
+============
+
+- 1.0 - 初始版本
+- 1.1 - 新增：跳过已下载种子、修复下载队列限制、改进删除错误提示
+- 1.2 - 修复：定时运行控制优先级问题（更具体的时间段优先）
+
+
+五、注意事项
+============
+
+1. 构建前确保 Docker Desktop 已启动
+2. 推送前确保已登录 Docker Hub：docker login
+3. 构建命令必须在 M-TEAM 目录下执行（因为 Dockerfile 需要访问 mteam-helper 目录）

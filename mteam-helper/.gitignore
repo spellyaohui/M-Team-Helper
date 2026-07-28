@@ -1,0 +1,48 @@
+# Kiro IDE
+.kiro/
+
+# 环境变量（包含敏感配置）
+.env
+.kiro/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+.venv/
+
+# 数据文件（包含用户数据）
+backend/data/mteam.db
+backend/data/mteam.db-shm
+backend/data/mteam.db-wal
+backend/data/torrents/
+
+# 测试脚本（包含敏感信息，不上传到仓库）
+backend/clear_data.py
+backend/check_all_trackers.py
+
+# Node.js
+node_modules/
+frontend/node_modules/
+
+# 构建输出
+frontend/dist/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 日志
+*.log
+backend/data/logs/
+data/logs/

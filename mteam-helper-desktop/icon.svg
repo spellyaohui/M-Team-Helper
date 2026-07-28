@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="256" height="256" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#41D1FF"/>
+      <stop offset="100%" stop-color="#BD34FE"/>
+    </linearGradient>
+  </defs>
+  <!-- 圆形背景 -->
+  <circle cx="128" cy="128" r="115.2" fill="url(#bg)"/>
+  <!-- M 字母 -->
+  <text x="128" y="158.72" 
+        font-family="Arial, sans-serif" 
+        font-size="128" 
+        font-weight="bold" 
+        fill="white" 
+        text-anchor="middle">M</text>
+</svg>
