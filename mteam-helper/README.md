@@ -2,9 +2,11 @@
 
 M-Team PT 站自动化助手，提供账号管理、种子浏览与搜索、自动下载规则、下载器联动、下载历史管理、自动删种与系统调度等能力，支持 qBittorrent 和 Transmission。
 
+本仓库 Monorepo 总览见根目录 [README.md](../README.md)。下文为 **mteam-helper** 主应用（Web + 后端）说明。
+
 ## 项目说明
 
-本仓库是 `mteam-helper` 主项目，包含：
+本目录包含：
 
 - React + TypeScript 前端。
 - FastAPI + SQLAlchemy 后端。
@@ -139,7 +141,7 @@ docker run -d \
 适用于 Ubuntu、Debian、CentOS、RHEL、Fedora 等主流发行版。
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/spellyaohui/M-Team-Helper/main/deploy.sh -o deploy.sh
+curl -fsSL https://raw.githubusercontent.com/spellyaohui/M-Team-Helper/main/mteam-helper/deploy.sh -o deploy.sh
 chmod +x deploy.sh
 sudo bash deploy.sh
 ```

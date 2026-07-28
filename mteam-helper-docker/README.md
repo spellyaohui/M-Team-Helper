@@ -18,8 +18,8 @@ M-Team PT 站自动化助手，支持自动下载免费种子、管理多账号�
 ```bash
 mkdir mteam-helper && cd mteam-helper
 
-# 下载 docker-compose.yml
-curl -O https://raw.githubusercontent.com/spellyaohui/M-Team-Helper/main/docker/docker-compose.yml
+# 下载 docker-compose.yml（路径以仓库为准）
+curl -O https://raw.githubusercontent.com/spellyaohui/M-Team-Helper/main/mteam-helper-docker/docker-compose.yml
 
 # 启动
 docker-compose up -d
